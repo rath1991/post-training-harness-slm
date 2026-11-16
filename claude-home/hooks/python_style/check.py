@@ -7,11 +7,15 @@ the file passed, or the hook could not run, which must never block work.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 STYLECHECK = Path(__file__).resolve().parent / "stylecheck.sh"
+# Search PATH explicitly: on Windows a bare "bash" resolves to System32's WSL
+# launcher before Git Bash, and that launcher cannot run this script.
+BASH = shutil.which("bash") or "bash"
 PYTHON_SUFFIXES = frozenset({".py", ".pyi"})
 EXIT_CHECKS_FAILED = 1
 SKIP_MARKER = "# stylecheck: skip"
@@ -53,7 +57,7 @@ def main() -> int:
     if file is None or opted_out(file):
         return 0
     result = subprocess.run(
-        ["bash", str(STYLECHECK), "--fix", str(file)],
+        [BASH, str(STYLECHECK), "--fix", str(file)],
         capture_output=True,
         text=True,
         timeout=120,

@@ -116,7 +116,14 @@ install_tools() {
 
 link_stylecheck() {
     mkdir -p "$HOME/.local/bin"
-    ln -sf "$CLAUDE_DIR/hooks/python_style/stylecheck.sh" "$HOME/.local/bin/stylecheck.sh"
+    local target="$CLAUDE_DIR/hooks/python_style/stylecheck.sh" link="$HOME/.local/bin/stylecheck.sh"
+    rm -f "$link"
+    ln -s "$target" "$link" 2>/dev/null || true
+    # Git Bash copies instead of linking, which breaks the script's ruff.toml lookup.
+    if [[ ! -L "$link" ]]; then
+        printf '#!/usr/bin/env bash\nexec bash "%s" "$@"\n' "$target" >"$link"
+        chmod +x "$link"
+    fi
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) log "Add ~/.local/bin to PATH to run stylecheck.sh directly" ;;
@@ -139,6 +146,8 @@ verify() {
     local python="$1" gate="$CLAUDE_DIR/hooks/python_style/stylecheck.sh"
     local scratch
     scratch="$(mktemp -d)"
+    # Git Bash: give native (Windows) Python a path it can resolve, not /tmp/...
+    command -v cygpath >/dev/null && scratch="$(cygpath -m "$scratch")"
     # Drop the "# stylecheck: skip" marker so the hook actually checks the copy.
     tail -n +2 "$REPO_DIR/examples/bad.py" >"$scratch/bad.py"
     expect_exit 0 "good.py passes the gate" bash "$gate" "$REPO_DIR/examples/good.py"
