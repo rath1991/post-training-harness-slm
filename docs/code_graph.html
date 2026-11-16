@@ -80,8 +80,23 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 .tok { font-family: var(--mono); font-size: 0.75rem; padding: 3px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
 .tok.on { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
 @media (prefers-reduced-motion: no-preference) { .node, .edge { transition: opacity .15s, stroke .15s; } }
-.flow { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
-@media (max-width: 960px) { .flow { grid-template-columns: 1fr; } }
+.flow { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+@media (max-width: 1060px) { .flow { grid-template-columns: 1fr; } }
+.flowdetail h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 16px 0 6px; }
+.res { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.res th { text-align: left; vertical-align: top; font-weight: 600; padding: 6px 10px 6px 0; white-space: nowrap; width: 1%; }
+.res td { padding: 6px 0; border-top: 1px solid var(--line); }
+.res tr:first-child td { border-top: 0; }
+.warn { border-left: 3px solid var(--gpu); padding: 6px 10px; background: var(--accent-soft); font-size: 0.88rem; }
+.calc { margin-top: 12px; font-size: 0.86rem; }
+.calc summary { cursor: pointer; color: var(--accent); }
+.calc ul { margin: 8px 0 0; padding-left: 18px; }
+.calc li { margin: 4px 0; }
+.totals { width: 100%; border-collapse: collapse; font-size: 0.88rem; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.totals th, .totals td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.totals thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.totals td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tablewrap { overflow-x: auto; }
 .flowwrap { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; min-width: 0; }
 .flowwrap svg { display: block; width: 100%; min-width: 760px; height: auto; }
 .lane-box { fill: var(--bg); stroke: var(--line); }
@@ -132,6 +147,18 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
       <aside class="flowdetail" id="flowdetail" aria-live="polite"></aside>
     </div>
     <p class="note" id="trl-note"></p>
+
+    <h2 style="margin-top:22px">Estimated cost per iteration (steps 1–14)</h2>
+    <div class="tablewrap"><table class="totals">
+      <thead><tr><th>Run</th><th>Strategy</th><th>Serve + switch</th><th>Rollouts</th><th>Train</th><th>Per iteration</th><th>Whole run</th><th>Peak GPU</th><th>Peak RAM</th></tr></thead>
+      <tbody>
+        <tr><td>Smoke (2 tasks × 4 attempts, 3 steps)</td><td>A · sleep</td><td class="num">≈ 15 s</td><td class="num">10–25 min*</td><td class="num">2–4 min</td><td class="num">12–30 min</td><td class="num">40–90 min</td><td class="num">14.8 GB</td><td class="num">≈ 17 GB</td></tr>
+        <tr><td>Smoke</td><td>B · sequential</td><td class="num">1–3 min</td><td class="num">6–12 min</td><td class="num">2–4 min</td><td class="num">9–19 min</td><td class="num">30–60 min</td><td class="num">15.3 GB</td><td class="num">≈ 12 GB</td></tr>
+        <tr><td>Full (8 tasks × 4 attempts, 50 steps)</td><td>B · sequential</td><td class="num">1–3 min</td><td class="num">25–50 min</td><td class="num">8–15 min</td><td class="num">35–70 min</td><td class="num">≈ 30–58 h</td><td class="num">15.3 GB</td><td class="num">≈ 14 GB</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">* Strategy A's rollouts are slower because its ≈ 1.5 GB of KV cache holds only ≈ 10 k tokens, so long attempts cannot all generate at once (step 6). The full run is shown with B because the estimates favour it; Day 1 measures the real numbers. The full run's 30–58 h is the figure to plan Day 2 around: cutting steps, tasks per step or Pi's 30-call limit shortens it.</p>
+    <p class="note">Fixed assumptions: Qwen3-4B (36 layers, hidden 2,560, 8 KV heads × 128, vocab 151,936); RTX 5060 Ti 16.3 GB, 448 GB/s, PCIe 5.0 x8, with 0.9 GB already used by the Windows desktop; Ryzen 7 7700X, 16 threads; WSL2 default memory cap 32 GB (half of 64 GB). Every time and memory figure here is an estimate to be replaced by Day 1's <code>metrics.jsonl</code>.</p>
   </section>
 
   <h2 style="margin:0">Code map</h2>
@@ -337,22 +364,22 @@ document.querySelectorAll(".path button").forEach(b => b.addEventListener("click
 const GPU = 16.3;
 const BUDGET = {
   sleep: { note: "The trainer stays resident, so vLLM gets less KV cache during rollouts (about 1.5 GB, roughly one full 12k-token agent trace at a time). There are no reloads between phases.",
-    rows: [["Start", "load trainer, then vLLM", [["trainer", 3.8], ["vllm", 10.1]]],
-           ["Rollouts", "Pi through vLLM", [["trainer", 3.8], ["vllm", 10.1]]],
-           ["Training", "vLLM asleep (level 1)", [["trainer", 9.0], ["vllm", 0.6]]],
-           ["Sync", "wake, then load policy-vN+1", [["trainer", 3.8], ["vllm", 10.1]]]] },
+    rows: [["Start", "load trainer, then vLLM", [["desktop", 0.9], ["trainer", 3.8], ["vllm", 10.1]]],
+           ["Rollouts", "Pi through vLLM", [["desktop", 0.9], ["trainer", 3.8], ["vllm", 10.1]]],
+           ["Training", "vLLM asleep (level 1)", [["desktop", 0.9], ["trainer", 9.0], ["vllm", 0.6]]],
+           ["Sync", "wake, then load policy-vN+1", [["desktop", 0.9], ["trainer", 3.8], ["vllm", 10.1]]]] },
   seq: { note: "Only one engine is alive at a time, so vLLM gets about 5 GB of KV cache. Each switch pays a vLLM restart and an NF4 reload, which Day 1 measures as switch_seconds.",
-    rows: [["Start", "create v0, free GPU", [["trainer", 0.5]]],
-           ["Rollouts", "fresh vLLM with vN", [["trainer", 0.5], ["vllm", 13.9]]],
-           ["Training", "vLLM stopped, trainer restored", [["trainer", 9.0]]],
-           ["Sync", "restart vLLM with vN+1", [["trainer", 0.5], ["vllm", 13.9]]]] },
+    rows: [["Start", "create v0, free GPU", [["desktop", 0.9], ["trainer", 0.5]]],
+           ["Rollouts", "fresh vLLM with vN", [["desktop", 0.9], ["trainer", 0.5], ["vllm", 13.9]]],
+           ["Training", "vLLM stopped, trainer restored", [["desktop", 0.9], ["trainer", 9.0]]],
+           ["Sync", "restart vLLM with vN+1", [["desktop", 0.9], ["trainer", 0.5], ["vllm", 13.9]]]] },
 };
-const SEG = { trainer: ["var(--trainer)", "QLoRA trainer process"], vllm: ["var(--vllm)", "vLLM process"] };
+const SEG = { desktop: ["var(--ext)", "Windows desktop (already in use)"], trainer: ["var(--trainer)", "QLoRA trainer process"], vllm: ["var(--vllm)", "vLLM process"] };
 
 function showBudget(key) {
   const plan = BUDGET[key];
   document.getElementById("budget").innerHTML = `
-    <div class="legend"><span><i class="dot" style="background:var(--trainer)"></i>${SEG.trainer[1]}</span>
+    <div class="legend"><span><i class="dot" style="background:var(--ext)"></i>${SEG.desktop[1]}</span><span><i class="dot" style="background:var(--trainer)"></i>${SEG.trainer[1]}</span>
     <span><i class="dot" style="background:var(--vllm)"></i>${SEG.vllm[1]}</span>
     <span><i class="dot" style="background:var(--free)"></i>free</span></div>` +
     plan.rows.map(([phase, sub, segs]) => {
@@ -385,55 +412,129 @@ const KIND = {
 const PHASES = [["Serve", 1, 1], ["Rollouts: 4 attempts per task", 2, 10], ["Check", 11, 11], ["Train", 12, 14]];
 const LOOP = [5, 8, "repeat until Pi stops, at most 30 steps"];
 const STEPS = [
-  { from: 0, to: 4, label: "serve policy-vN", kind: "custom",
-    text: "Strategy A wakes the sleeping vLLM, hot-loads the new adapter with POST /v1/load_lora_adapter and unloads the previous one. Strategy B starts a fresh vLLM process with policy-vN preloaded. Either way only a ~60 MB LoRA adapter moves; the 4B base weights never change.",
+  { from: 0, to: 4, label: "serve policy-vN", kind: "custom", title: "Serve the current policy",
+    text: "Before any attempt starts, vLLM must be serving the newest LoRA adapter, policy-vN. (v0 is the untrained adapter, so it behaves exactly like the base model.) Strategy A: vLLM slept through training, so it wakes up, hot-loads the new adapter and drops the old one. Strategy B: vLLM was stopped for training, so a fresh vLLM process starts with the adapter already loaded. The 4B base model never changes; only the small adapter is swapped.",
+    res: { gpu: "A: vLLM back to 10.1 GB beside the trainer's 3.8 GB → 14.8 of 16.3 GB (with 0.9 GB Windows desktop). B: vLLM takes 13.9 GB → 15.3 of 16.3 GB.",
+      ram: "A: the 8 GB of weights vLLM parked in RAM move back to the GPU. B: new vLLM process ≈ 3 GB.",
+      cpu: "1 thread. B also compiles CUDA graphs at start (1–2 threads).",
+      time: "A: 3–10 s. B: 30–120 s (the first start is slowest; the compile cache helps later)." },
+    calc: ["Base weights in BF16: 4.0 B params × 2 bytes = 8.0 GB.",
+      "Adapter: 33 M LoRA params × 4 bytes ≈ 130 MB, so a hot-load takes under a second (derivation in step 14).",
+      "Waking copies 8 GB from RAM over PCIe 5.0 x8 (≈ 20 GB/s in practice) ≈ 0.4 s; the rest is vLLM rebuilding its KV cache.",
+      "B: reading 8 GB from the WSL disk at ≈ 2 GB/s ≈ 4 s. Most of B's start time is CUDA-graph capture and compilation, not loading."],
     code: "memory/strategies.py · to_inference",
     stock: { label: "load_lora_adapter trl-policy-vN", kind: "trl",
-      text: "TRL saves the adapter and calls /v1/load_lora_adapter on a vLLM server that runs on its own GPU and never stops. harness-rl copies this naming and hot-load convention." } },
-  { from: 0, to: 1, label: "create(task, seed) × 4", kind: "reused",
-    text: "For each task in the step, harness-rl asks OpenEnv's HarborSessionFactory for 4 sessions (num_generations = 4) and runs them in a thread pool. Sampling is temperature only, set through training_sampling. The factory API is used as published.",
+      text: "TRL saves the adapter and calls /v1/load_lora_adapter on a vLLM server that has its own GPU and never stops. harness-rl copies this naming and hot-load convention." } },
+  { from: 0, to: 1, label: "create(task, seed) × 4", kind: "reused", title: "Start 4 attempts per task",
+    text: "harness-rl takes the next tasks from the training split: 2 per step in the smoke run, 8 in the full run. For each task it asks OpenEnv for 4 separate sessions, so the model tries the same task 4 times. Those 4 attempts form a group, and GRPO learns by comparing attempts within a group. At most 4 sessions run at once, so the 8 smoke attempts run as 2 waves of 4. The attempts differ only because sampling uses temperature 1.0; that is the one sampling setting sent.",
+    res: { gpu: "No change. This step is HTTP calls only.",
+      ram: "4 waiting Python threads in the harness-rl process: a few MB.",
+      cpu: "Negligible; the threads mostly wait.",
+      time: "A wave lasts as long as its slowest attempt (steps 3–10), roughly 3–6 min. Smoke step: 2 waves ≈ 6–12 min. Full step: 8 waves ≈ 25–50 min." },
+    calc: ["Smoke: 2 tasks × 4 attempts = 8 attempts ÷ 4 at a time = 2 waves.",
+      "Full: 8 tasks × 4 attempts = 32 attempts ÷ 4 at a time = 8 waves.",
+      "4 at a time matches vLLM's max_num_seqs = 4, so attempts do not queue for a server slot (but see step 6 for Strategy A's KV limit)."],
     code: "rollout/collect.py · collect_groups, run_rollout",
-    stock: { kind: "trl", text: "TRL's rollout workers call the same factory, but asynchronously: the next batch is collected while the previous one trains on the other GPU." } },
-  { from: 1, to: 2, label: "start session (split, harness = pi)", kind: "reused",
-    text: "OpenEnv asks the Harbor server on :8200 for a session on one task from the prepared split (data/harbor/<split>), with Pi as the agent.",
+    stock: { kind: "trl", text: "TRL's rollout workers call the same OpenEnv factory, but asynchronously: the next batch is collected while the previous one trains on the other GPU." } },
+  { from: 1, to: 2, label: "start session (split, harness = pi)", kind: "reused", title: "Open a Harbor session",
+    text: "OpenEnv tells the Harbor server (port 8200) which task to run and that the agent is Pi. Harbor reads the task from the prepared split folder, data/harbor/smoke for Day 1.",
+    res: { gpu: "None.", ram: "Harbor server + OpenEnv ≈ 0.5–1 GB, resident for the whole run.", cpu: "Negligible.", time: "Under 1 s." },
+    calc: ["Bookkeeping only; the heavy work starts in step 4."],
     code: "OpenEnv harbor_env (vendor/OpenEnv/envs)" },
-  { from: 2, to: 3, label: "build sandbox, launch Pi", kind: "reused",
-    text: "Harbor builds the task's environment/Dockerfile (base image + repo + setup.sh), starts an offline container and launches Pi with the task instruction. solution/ and tests/ are never in the image; tasks/harbor_layout.py refuses any task that would leak them. Runbook assumption 1 (Pi on Node 18 without internet) is checked here first.",
-    code: "tasks/harbor_layout.py prepares the layout; Harbor does the rest" },
-  { from: 3, to: 1, label: "chat completion + tools", kind: "reused",
-    text: "Pi calls an OpenAI-compatible endpoint. Its base URL points at OpenEnv's capture proxy on :8300, not at vLLM, so Pi runs unmodified and does not know it is being recorded.",
+  { from: 2, to: 3, label: "build sandbox, launch Pi", kind: "reused", title: "Build the sandbox and launch Pi",
+    text: "Harbor builds the task's Docker image: the shared base image plus that task's repository and setup script. It starts the container with no internet access and launches Pi inside it with the task instructions. The reference solution and hidden tests are not in the image; harness-rl's data preparation refuses any task that would put them there.",
+    warn: "Riskiest step. If Pi needs internet or Node 20+ (the image has Node 18), it fails here. Day 1 stage 0 runs one task first to check (runbook assumption 1).",
+    res: { gpu: "None.",
+      ram: "≈ 0.3–1.5 GB per running container (Pi on Node plus the repo's build tools); 4 at once ≈ 2–6 GB.",
+      cpu: "First build of a task: 1–4 threads for 20–90 s. Later attempts reuse the cached image.",
+      time: "First attempt on a task: 20–90 s. The other 3 attempts: 2–5 s each.",
+      disk: "≈ 50–300 MB per task image on top of the 1.8 GB base. 8 smoke tasks: under 3 GB. 400 training tasks: could reach tens of GB, so prune images between days." },
+    calc: ["Docker caches the image after the first build, and all 4 attempts on a task share it.",
+      "Container RAM is a guess: Node ≈ 200 MB plus compilers and test runners for Go, C, Python and so on."],
+    code: "tasks/harbor_layout.py prepares the task; Harbor does the rest" },
+  { from: 3, to: 1, label: "chat completion + tools", kind: "reused", title: "Pi asks the model what to do",
+    text: "Pi sends a chat request containing the system prompt, its tool definitions (read, edit, bash…), the task and everything that has happened so far. It sends it to OpenEnv's capture proxy on port 8300, believing it is a normal OpenAI-style API. Pi itself is not modified.",
+    res: { gpu: "None yet.", ram: "Negligible.", cpu: "Negligible.", time: "Milliseconds." },
+    calc: ["Every request repeats the whole conversation, so prompts grow from ≈ 2–3 k tokens (system prompt + tools + task) to 8–12 k by the end of an attempt."],
     code: "Pi (unchanged)" },
-  { from: 1, to: 4, label: "forward, record tokens", kind: "reused",
-    text: "The proxy forwards the call to vLLM (model policy-vN) and asks for token ids and log-probs. It records every call as a TrainingTurn: prompt_token_ids, completion_token_ids, per_token_logps and loss_mask. These are the exact tokens the policy sampled, so no re-tokenisation happens later.",
+  { from: 1, to: 4, label: "forward, record tokens", kind: "reused", title: "Proxy forwards to vLLM and records tokens",
+    text: "The proxy passes the request to vLLM and asks for the token IDs and the log-probability of every generated token. It saves each call as one TrainingTurn: prompt token IDs, generated token IDs, their log-probs, and a mask marking which tokens the model wrote. Training later uses exactly these tokens, so nothing is re-tokenised.",
+    warn: "Strategy A as configured (gpu_memory_utilization 0.62) has ≈ 10.4 k tokens of KV cache, less than max_model_len = 12,288. vLLM may refuse to start, and once two contexts pass ≈ 5 k tokens they cannot run together. Suggested fix before Day 1: raise A to ≈ 0.66 (≈ 14.6 k tokens, 15.5 of 16.3 GB in use) or lower max_model_len. Not changed yet; needs your approval.",
+    res: { gpu: "KV cache grows with context at 144 KB per token. A: ≈ 1.5 GB of KV (≈ 10.4 k tokens) shared by all running attempts. B: ≈ 5.3 GB (≈ 36 k tokens).",
+      ram: "The recorded trace grows to ≈ 1–5 MB per attempt (prompt IDs repeat on every turn).",
+      cpu: "vLLM scheduler ≈ 1–2 threads.",
+      time: "Per call: only the new tokens are prefilled (earlier context comes from the prefix cache), 0.1–0.5 s. Generating 150–300 tokens at ≈ 35 tokens/s per attempt takes 4–9 s." },
+    calc: ["KV per token = 36 layers × 2 (K and V) × 8 KV heads × 128 dims × 2 bytes = 147,456 B ≈ 144 KB.",
+      "A: 0.62 × 16.3 = 10.1 GB for vLLM − 8.0 GB weights − ≈ 0.6 GB activations ≈ 1.5 GB of KV ≈ 10.4 k tokens.",
+      "B: 0.85 × 16.3 = 13.9 GB − 8.6 GB ≈ 5.3 GB of KV ≈ 36 k tokens: room for 4 attempts at ≈ 9 k tokens each.",
+      "One full 12,288-token context needs 12,288 × 144 KB ≈ 1.77 GB.",
+      "Speed: every decode step reads all 8 GB of weights. At the card's 448 GB/s that caps at ≈ 56 steps/s; with 4 attempts sharing each step that is ≈ 140 tokens/s in total, ≈ 35 per attempt after overhead."],
     code: "OpenEnv capture proxy; vLLM flags in inference/vllm_server.py" },
-  { from: 4, to: 3, label: "reply: tool call (via proxy)", kind: "reused",
-    text: "vLLM's reply goes back through the proxy to Pi, parsed into tool calls by the hermes parser.",
-    code: "inference/vllm_server.py · serve_command" },
-  { from: 3, to: 3, label: "run tool in sandbox", kind: "reused",
-    text: "Pi runs the tool (read, edit, bash) inside the container and feeds the output into its next call. Steps 5–8 repeat until Pi finishes or hits the 30-step limit. Tool output becomes context in the next turn and is never trained on.",
+  { from: 4, to: 3, label: "reply: tool call (via proxy)", kind: "reused", title: "The reply goes back to Pi",
+    text: "vLLM's answer, usually one or more tool calls, travels back through the proxy to Pi. vLLM's hermes parser turns the model's text into structured tool calls that Pi can execute.",
+    res: { gpu: "No change.", ram: "Negligible.", cpu: "Negligible.", time: "Milliseconds." },
+    calc: ["Nothing to compute; included so the loop is complete."],
+    code: "inference/vllm_server.py · serve_command (tool-call parser)" },
+  { from: 3, to: 3, label: "run tool in sandbox", kind: "reused", title: "Pi runs the tool",
+    text: "Pi runs the tool inside the container: reading a file, editing one, or running a shell command such as the project's build or tests. The output goes into the next request (back to step 5). Steps 5–8 repeat until Pi says it is done or reaches the 30-call limit. Tool output is context only and is never trained on, because the model did not write it.",
+    res: { gpu: "None.",
+      ram: "Inside the container's 0.3–1.5 GB.",
+      cpu: "Reads and edits: negligible. Builds and tests: 1–8 threads for 2–60 s.",
+      time: "1–10 s per tool call. One attempt: 10–30 calls → ≈ 2–5 min typical, 1–9 min range." },
+    calc: ["Attempt length ≈ calls × (generation 4–9 s + tool 1–10 s) = 10–30 × 5–19 s ≈ 1–9 min.",
+      "16 threads (Ryzen 7 7700X) cover 4 containers running tests at once plus vLLM."],
     code: "Pi (unchanged)" },
-  { from: 2, to: 2, label: "verifier → reward.json", kind: "reused",
-    text: "After Pi stops, Harbor adds the hidden tests and runs them. The verifier writes reward.json with reward 1 or 0, all or nothing.",
+  { from: 2, to: 2, label: "verifier → reward.json", kind: "reused", title: "Hidden tests decide the reward",
+    text: "When Pi stops, Harbor copies the hidden tests into the container and runs them. The result is all or nothing: reward 1 if every test passes, 0 otherwise, written to reward.json.",
+    res: { gpu: "None.", ram: "Inside the container.", cpu: "1–4 threads.", time: "10–90 s depending on the test suite." },
+    calc: ["All-or-nothing rewards mean a group of 4 attempts only teaches something if some pass and some fail (see step 12)."],
     code: "Harbor verifier (unchanged)" },
-  { from: 1, to: 0, label: "reward + training trace", kind: "reused",
-    text: "harness-rl calls wait_for_completion(), reads result.reward, fetches the training trace and closes the session. A broken sandbox comes back as an error result instead of stopping the run.",
+  { from: 1, to: 0, label: "reward + training trace", kind: "reused", title: "Return the reward and the trace",
+    text: "harness-rl waits for the session to finish, reads the reward, downloads the recorded trace and closes the session, which removes the container. If a sandbox crashes, the attempt comes back marked as an error and the run continues.",
+    res: { gpu: "None.", ram: "Trace 1–5 MB kept in harness-rl; the container's RAM is freed.", cpu: "Negligible.", time: "1–3 s (mostly container teardown)." },
+    calc: ["8 smoke attempts × ≤ 5 MB ≈ 40 MB of traces per step at most."],
     code: "rollout/collect.py · run_rollout, turn_tokens" },
-  { from: 0, to: 4, label: "probe log-probs (sync check)", kind: "custom",
-    text: "Sends a fixed probe sequence to /v1/completions with prompt_logprobs and compares the answer with the trainer's own log-probs. Small difference plus a change from the previous version proves vLLM serves the adapter that was just trained.",
+  { from: 0, to: 4, label: "probe log-probs (sync check)", kind: "custom", title: "Check vLLM serves the trained adapter",
+    text: "harness-rl sends a fixed 512-token probe to vLLM and asks for the log-prob of each token, then compares them with the trainer's own log-probs on the same probe. Close agreement, plus a change from the previous version, proves vLLM is really serving the adapter that was just trained. This catches a silent failure where training happens but rollouts keep using old weights.",
+    res: { gpu: "One 512-token prefill: ≈ 74 MB of KV, freed at once.", ram: "Negligible.", cpu: "Negligible.", time: "Under 1 s." },
+    calc: ["512 tokens × 144 KB ≈ 74 MB.",
+      "A small gap always remains because vLLM runs BF16 weights and the trainer runs NF4; the first step measures that gap so later steps can be judged against it."],
     code: "pipeline.py · sync_check, served_logps",
-    stock: { off: true, text: "Not in stock TRL. harness-rl adds it because adapter hand-over between two processes on one GPU is the riskiest custom part." } },
-  { from: 0, to: 0, label: "merge turns, mask, advantages", kind: "trl",
-    text: "Turns that extend each other are merged into one sequence. Prompt and tool-output tokens get loss_mask 0. Each group of 4 rewards becomes advantages (r − mean) / (std + 1e-8) with population std; groups where all 4 score the same carry no signal and are dropped. This is TRL's rule.",
+    stock: { off: true, text: "Not in stock TRL. harness-rl adds it because handing the adapter between two processes on one GPU is the riskiest custom part." } },
+  { from: 0, to: 0, label: "merge turns, mask, advantages", kind: "trl", title: "Turn traces into training rows",
+    text: "Pure Python, no GPU. Each attempt's model calls are joined into as few sequences as possible: when one call's prompt starts with the previous call's full text, the two merge. Tokens the model generated are trained; prompts and tool output are masked out. Each group's 4 rewards then become advantages: reward minus the group mean, divided by the group's spread. A group where all 4 attempts scored the same has no spread, carries no signal, and is dropped. This is TRL's rule.",
+    res: { gpu: "None.", ram: "Tens of MB.", cpu: "1 thread.", time: "Under 2 s." },
+    calc: ["Rewards (1, 0, 0, 1): mean 0.5, std 0.5 → advantages (+1, −1, −1, +1).",
+      "Rewards (0, 0, 0, 0): std 0 → group dropped. A 4B model may fail many tasks early, which is why the smoke tasks are the easiest (difficulty 1).",
+      "Smoke step: at most 8 sequences × ≈ 8 k tokens ≈ 64 k tokens to train on. Full step: up to ≈ 256 k."],
     code: "rollout/traces.py, rollout/rewards.py, rollout/batching.py",
     stock: { text: "TRL does the same inside its trainer: group z-score, NaN rewards excluded, zero-variance groups dropped." } },
-  { from: 0, to: 4, label: "free GPU: sleep / stop", kind: "custom",
-    text: "Strategy A puts vLLM to sleep (level 1: weights to CPU, KV cache freed) while the trainer stays resident. Strategy B stops vLLM entirely and reloads the NF4 trainer. Day 1 measures which hand-over is cheaper.",
+  { from: 0, to: 4, label: "free GPU: sleep / stop", kind: "custom", title: "Free the GPU for training",
+    text: "vLLM and the trainer cannot both run at full size on 16 GB. Strategy A puts vLLM to sleep: its weights are parked in RAM and its KV cache is dropped, leaving ≈ 0.6 GB on the GPU; the trainer stayed loaded all along. Strategy B stops vLLM entirely and reloads the trainer from the saved adapter.",
+    res: { gpu: "A: vLLM 10.1 → 0.6 GB. B: vLLM 13.9 → 0 GB, trainer reloads to 3.8 GB.",
+      ram: "A: +8 GB pinned in the vLLM process (≈ 11 GB total). B: −3 GB for vLLM; the trainer reload briefly needs ≈ 3 GB extra.",
+      cpu: "1 thread.",
+      time: "A: 2–5 s. B: stop 3–10 s + trainer reload 20–40 s." },
+    calc: ["A: 8 GB GPU → RAM over PCIe ≈ 0.4 s at ≈ 20 GB/s; vLLM's bookkeeping makes it a few seconds.",
+      "B: the reload reads the 8 GB BF16 checkpoint, quantises it to NF4 (2.6 GB) on the GPU, then loads the adapter and optimizer state (≈ 0.4 GB).",
+      "Peak RAM in WSL during A's training ≈ 11 (vLLM asleep) + 4 (trainer process) + 2 (Harbor, OpenEnv, Docker) ≈ 17 GB, inside WSL's default cap of 32 GB (half of 64 GB)."],
     code: "memory/strategies.py · to_training",
     stock: { off: true, text: "Not needed: in TRL's design the trainer has its own GPU, so vLLM never gives memory back. This is the step that makes one 16 GB card possible." } },
-  { from: 0, to: 0, label: "GRPO step → save policy-vN+1", kind: "trl",
-    text: "One optimizer step on the NF4 base + LoRA using TRL's clipped surrogate (eps 0.2 / 0.28, importance-ratio clip [0.5, 5], beta = 0), normalised by the number of trained tokens. The new adapter is saved and the loop returns to step 1.",
+  { from: 0, to: 0, label: "GRPO step → save policy-vN+1", kind: "trl", title: "GRPO update, then save",
+    text: "One optimizer step on the LoRA adapter only; the NF4 base stays frozen. For every trained token the loss compares the new log-prob with the one recorded at sampling time, weights it by the group advantage, and clips large changes. This is TRL's clipped objective with beta = 0, so no reference model is loaded. The loss is averaged over all trained tokens. The new adapter and optimizer state are saved as policy-vN+1 and the loop returns to step 1.",
+    res: { gpu: "≈ 9 GB peak for the trainer, plus 0.6 GB (A, vLLM asleep) and 0.9 GB desktop → ≈ 10.5 of 16.3 GB.",
+      ram: "≈ 4 GB in the trainer process.",
+      cpu: "1 thread feeding the GPU.",
+      time: "Smoke step (≈ 64 k tokens): 2–4 min. Full step (≈ 256 k): 8–15 min. Saving: ≈ 1 s.",
+      disk: "≈ 0.4 GB per version (adapter 130 MB + optimizer state 260 MB). 50 versions ≈ 20 GB." },
+    calc: ["LoRA params per layer = r × (in + out) over q, k, v, o, gate, up, down = 16 × (6,656 + 3,584 + 3,584 + 6,656 + 3 × 12,288) = 917,504; × 36 layers ≈ 33 M.",
+      "Optimizer in fp32: weights 132 MB + gradients 132 MB + Adam's 2 moments 264 MB ≈ 0.53 GB.",
+      "Trainer peak ≈ NF4 base 2.6 + LoRA and Adam 0.5 + checkpointed activations 2.3 + one layer recomputed ≈ 1.5 + logits chunk ≈ 1.2 + CUDA context 0.5 ≈ 9 GB.",
+      "Checkpointed activations: 12,288 tokens × 2,560 hidden × 2 bytes ≈ 63 MB per layer × 36 ≈ 2.3 GB for the longest sequence.",
+      "Logits are computed 1,024 tokens at a time: 1,024 × 151,936 vocab × 4 bytes ≈ 0.62 GB, about doubled during backward.",
+      "Compute ≈ 8 × 4 B params × 64 k tokens ≈ 2 × 10¹⁵ FLOPs, plus attention at long context → ≈ 3 × 10¹⁵. At an assumed 15–25 TFLOPS after NF4 de-quantisation ≈ 2–4 min."],
     code: "training/step.py · train_step; training/grpo_loss.py",
-    stock: { text: "Identical rule, run by TRL's trainer on GPU 1 with a merged or LoRA weight sync afterwards." } },
+    stock: { text: "Identical rule, run by TRL's trainer on GPU 1, followed by a weight sync to vLLM." } },
 ];
 const ROW0 = 112, ROWH = 42, FS = document.getElementById("flow");
 let design = "ours", current = 0;
@@ -485,17 +586,25 @@ function drawFlow() {
   showStep(current);
 }
 
+const RES_LABELS = [["gpu", "GPU memory"], ["ram", "RAM (in WSL)"], ["cpu", "CPU"], ["time", "Time"], ["disk", "Disk"]];
+
 function showStep(i) {
   current = i;
-  const s = view(STEPS[i]), [c, who] = KIND[s.kind];
+  const raw = STEPS[i], s = view(raw), [c, who] = KIND[s.kind];
   FS.querySelectorAll(".msg").forEach((g, j) => g.classList.toggle("sel", j === i));
-  const differs = design === "stock" && STEPS[i].stock;
+  const differs = design === "stock" && raw.stock;
+  const rows = RES_LABELS.filter(([k]) => raw.res[k])
+    .map(([k, name]) => `<tr><th scope="row">${name}</th><td>${raw.res[k]}</td></tr>`).join("");
   document.getElementById("flowdetail").innerHTML = `
     <span class="tag" style="color:var(--muted)">step ${i + 1} of ${STEPS.length}</span><span class="tag" style="color:${c}">${s.off ? "Not in this design" : who}</span>
-    <h3>${s.label}</h3>
-    <p>${s.text}</p>
-    ${differs ? `<p class="note">In harness-rl: ${STEPS[i].text}</p>` : ""}
-    <p class="note">Code: <code>${STEPS[i].code}</code></p>
+    <h3>${raw.title}</h3>
+    <p>${differs ? s.text : raw.text}</p>
+    ${differs ? `<p class="note">In harness-rl: ${raw.text}</p>` : ""}
+    ${raw.warn ? `<p class="warn">⚠ ${raw.warn}</p>` : ""}
+    <h4>Estimated cost on your RTX 5060 Ti${design === "stock" ? " (harness-rl)" : ""}</h4>
+    <table class="res">${rows}</table>
+    <details class="calc"><summary>How these numbers are worked out</summary><ul>${raw.calc.map(x => `<li>${x}</li>`).join("")}</ul></details>
+    <p class="note">Code: <code>${raw.code}</code></p>
     <div class="step-nav"><button id="step-prev" ${i === 0 ? "disabled" : ""}>← Previous</button><button id="step-next" ${i === STEPS.length - 1 ? "disabled" : ""}>Next →</button></div>`;
   document.getElementById("step-prev").addEventListener("click", () => showStep(Math.max(0, i - 1)));
   document.getElementById("step-next").addEventListener("click", () => showStep(Math.min(STEPS.length - 1, i + 1)));
