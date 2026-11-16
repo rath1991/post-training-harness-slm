@@ -1,0 +1,34 @@
+# Readability and functional-style rules used by the global PostToolUse hook.
+# Used only when the edited project has no ruff config of its own.
+target-version = "py312"
+line-length = 88  # match black
+
+[lint]
+select = [
+    "F",      # pyflakes: unused imports/variables, undefined names
+    "E",      # pycodestyle errors
+    "B",      # bugbear: mutable defaults (B006), calls in defaults (B008), etc.
+    "C4",     # comprehensions
+    "C901",   # cyclomatic complexity
+    "SIM",    # simplifications
+    "RET",    # return-statement clarity
+    "UP",     # modern syntax (list[int], X | None)
+    "FBT",    # boolean positional flags
+    "ARG",    # unused arguments
+    "N",      # naming
+    "PIE",    # misc unnecessary code
+    "ANN001", # missing argument annotations
+    "ANN201", # missing return annotation (public)
+    "PLW0602", "PLW0603",  # global statements
+    "PLR0912", "PLR0913", "PLR0915",  # too many branches / args / statements
+    "PLR1714", "PLR5501",  # merge comparisons, collapsible else-if
+]
+ignore = ["E501"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 5
+max-branches = 10
+max-statements = 40
