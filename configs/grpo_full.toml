@@ -1,0 +1,33 @@
+# Day 2: main GRPO run on 400 training tasks (one pass = 400 / groups_per_step steps).
+# Set [run].strategy to whichever strategy wins the Day 1 comparison.
+
+[run]
+name = "grpo-full"
+output_dir = "runs/grpo-full"
+strategy = "sequential"
+seed = 0
+
+[model]
+base_model = "Qwen/Qwen3-4B-Instruct-2507"
+max_model_len = 12288
+lora_rank = 16
+lora_alpha = 32
+
+[vllm]
+gpu_memory_utilization = 0.85
+max_num_seqs = 4
+
+[harbor]
+split = "data/harbor/train"
+harness = "pi"
+sandbox = "docker"
+agent_timeout_sec = 600
+agent_step_limit = 30
+max_concurrent_rollouts = 4
+
+[grpo]
+num_generations = 4
+groups_per_step = 8
+max_steps = 50
+learning_rate = 1e-5
+temperature = 1.0
