@@ -1,0 +1,327 @@
+<title>harness_rl Code Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column — header, graph + detail side by side (stacks on phones), reading path, GPU budget. */
+:root {
+  --bg: #f6f7f5; --surface: #ffffff; --fg: #1d2420; --muted: #5c6862; --line: #d5dbd7;
+  --accent: #2f6f5e; --accent-soft: #e2efea;
+  --pure: #2f6f5e; --gpu: #a5641c; --io: #3d5a8a; --ext: #7a7f85;
+  --vllm: #3d5a8a; --trainer: #a5641c; --free: #e7ebe8;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --surface: #1a201d; --fg: #e3e8e5; --muted: #98a59e; --line: #2e3833;
+  --accent: #6cc2a8; --accent-soft: #1f3a32;
+  --pure: #6cc2a8; --gpu: #e0a35c; --io: #8fb0e6; --ext: #9aa0a6;
+  --vllm: #6f93cf; --trainer: #d39248; --free: #26302b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121614; --surface: #1a201d; --fg: #e3e8e5; --muted: #98a59e; --line: #2e3833;
+  --accent: #6cc2a8; --accent-soft: #1f3a32;
+  --pure: #6cc2a8; --gpu: #e0a35c; --io: #8fb0e6; --ext: #9aa0a6;
+  --vllm: #6f93cf; --trainer: #d39248; --free: #26302b; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+h1 { font-size: 1.6rem; font-weight: 600; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.05rem; font-weight: 600; margin: 0 0 10px; }
+.lede { color: var(--muted); max-width: 68ch; margin: 6px 0 0; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.82rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+.graph { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; min-width: 0; }
+.graph svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.edge { stroke: var(--line); stroke-width: 1.4; fill: none; }
+.edge.hot { stroke: var(--accent); stroke-width: 2.2; }
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.node .bar { stroke: none; }
+.node text { fill: var(--fg); font: 500 12.5px var(--mono); }
+.node .order { fill: var(--muted); font: 500 10.5px var(--sans); }
+.node { cursor: pointer; outline: none; }
+.node:hover rect.box, .node:focus-visible rect.box { stroke: var(--accent); }
+.node.sel rect.box { stroke: var(--accent); stroke-width: 2.4; fill: var(--accent-soft); }
+.node.dim { opacity: 0.38; }
+.ext rect.box { stroke-dasharray: 4 3; }
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; min-width: 0; }
+.detail .file { font-family: var(--mono); font-size: 0.9rem; color: var(--accent); word-break: break-all; }
+.tag { display: inline-block; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px;
+  border-radius: 3px; border: 1px solid currentColor; margin: 8px 6px 0 0; }
+.detail p { margin: 12px 0 0; }
+.detail ul { margin: 10px 0 0; padding-left: 18px; }
+.detail li { margin: 3px 0; }
+.why { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+.path { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; padding: 0; margin: 0; list-style: none; }
+.path button { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  padding: 10px 12px; color: var(--fg); font: inherit; cursor: pointer; display: grid; gap: 2px; }
+.path button:hover, .path button:focus-visible { border-color: var(--accent); outline: none; }
+.path .n { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.path .f { font-family: var(--mono); font-size: 0.85rem; }
+.path .q { font-size: 0.85rem; color: var(--muted); }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
+.toggle button { background: var(--surface); color: var(--fg); border: 0; padding: 7px 14px; font: inherit; font-size: 0.88rem; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.budget { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 70px; gap: 12px; align-items: center; }
+@media (max-width: 560px) { .row { grid-template-columns: 1fr 60px; } .row .label { grid-column: 1 / -1; } }
+.label { font-size: 0.88rem; }
+.label small { display: block; color: var(--muted); font-size: 0.78rem; }
+.meter { display: flex; height: 22px; border-radius: 4px; overflow: hidden; background: var(--free); }
+.meter span { display: block; height: 100%; }
+.total { font-family: var(--mono); font-size: 0.85rem; text-align: right; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: 0.85rem; max-width: 80ch; margin: 12px 0 0; }
+.tokens { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 10px; }
+.tok { font-family: var(--mono); font-size: 0.75rem; padding: 3px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.tok.on { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+@media (prefers-reduced-motion: no-preference) { .node, .edge { transition: opacity .15s, stroke .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>harness_rl code map</h1>
+    <p class="lede">Black-box GRPO and privileged distillation for a 4B coder running inside Pi, Harbor and OpenEnv on one 16&nbsp;GB GPU. Select a module to see what it does and what it depends on. The numbers give the suggested reading order.</p>
+  </header>
+
+  <div class="legend" aria-label="Legend">
+    <span><i class="dot" style="background:var(--pure)"></i>Pure logic (testable without a GPU)</span>
+    <span><i class="dot" style="background:var(--gpu)"></i>Touches the GPU</span>
+    <span><i class="dot" style="background:var(--io)"></i>I/O: processes, HTTP, files</span>
+    <span><i class="dot" style="background:var(--ext)"></i>External system, reused unchanged</span>
+  </div>
+
+  <div class="main">
+    <div class="graph"><svg id="graph" viewBox="0 0 1040 560" role="img" aria-label="Module dependency graph"></svg></div>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+
+  <section>
+    <h2>Reading path</h2>
+    <ol class="path" id="path"></ol>
+  </section>
+
+  <section>
+    <h2>One 16&nbsp;GB GPU, two hand-over strategies</h2>
+    <div class="toggle" role="group" aria-label="Memory strategy">
+      <button id="btn-sleep" aria-pressed="true">A · vLLM sleep mode</button>
+      <button id="btn-seq" aria-pressed="false">B · Sequential switching</button>
+    </div>
+    <div class="budget" id="budget"></div>
+    <p class="note" id="budget-note"></p>
+    <p class="note">These are planned budgets from the configs (Qwen3-4B: about 8.0&nbsp;GB in BF16 and about 2.6&nbsp;GB in NF4), not measurements. Day&nbsp;1 replaces them with <code>nvidia-smi</code> peaks from <code>metrics.jsonl</code>.</p>
+  </section>
+</div>
+
+<script>
+const NODES = [
+  { id: "cli", x: 520, y: 40, kind: "io", order: 7, file: "cli.py",
+    role: "Entry points: prepare-data, inspect-trace, grpo, compare-strategies, eval, compare.",
+    fns: ["prepare_data", "run_grpo_command", "inspect_trace_command", "run_eval_command"],
+    why: "This is the only place that reads arguments and wires real dependencies together. Everything below it can be driven from a test." },
+  { id: "tasks", x: 100, y: 150, kind: "pure", order: 8, file: "tasks/  (manifest · splits · harbor_layout)",
+    role: "Reads manifest.jsonl, picks codebase-disjoint stratified train/eval/OOD/smoke sets, and converts each task to Harbor's single-step layout.",
+    fns: ["build_partitions", "stratified_sample", "convert_task", "leaked_paths"],
+    why: "leaked_paths stops a conversion if solution/ or the hidden tests would end up in the sandbox's build context. OOD keeps its 27 native tasks and is never padded with held-out ones." },
+  { id: "pipeline", x: 400, y: 150, kind: "io", order: 6, file: "pipeline.py",
+    role: "The GRPO loop. iteration(context, state) → (state, record): inference → rollouts → sync check → train → save vN+1.",
+    fns: ["run_grpo", "iteration", "training_phase", "sync_check", "final_sync"],
+    why: "Steps with no reward variance skip training and keep the policy. Every step writes one JSON line containing its phases, rewards, losses and sync evidence." },
+  { id: "evaluation", x: 640, y: 150, kind: "io", order: 9, file: "evaluation.py",
+    role: "Runs base and trained models on the same split, harness and limits, then compares them task by task.",
+    fns: ["run_eval", "summarise_eval", "compare_tasks"],
+    why: "Unscored rollouts, where the verifier never ran, are reported separately, so an infrastructure failure can't look like a model failure." },
+  { id: "reports", x: 880, y: 150, kind: "pure", order: 10, file: "reports.py",
+    role: "Stage-0 trace validity check and the Day 1 strategy comparison table.",
+    fns: ["check_trace", "strategy_report", "markdown_table"],
+    why: "check_trace is the gate from scope §10: one Pi task must yield a usable token trace before any training starts." },
+  { id: "strategies", x: 140, y: 270, kind: "gpu", order: 5, file: "memory/strategies.py",
+    role: "PolicyRuntime protocol with two implementations. SleepModeRuntime keeps the trainer resident and sleeps vLLM. SequentialRuntime keeps only one engine alive at a time.",
+    fns: ["SleepModeRuntime", "SequentialRuntime", "make_runtime", "launch_vllm"],
+    why: "This is the Day 1 experiment. The pipeline is identical for A and B, so the comparison is fair. Sleep level 1 is enough because LoRA never changes the base weights." },
+  { id: "monitor", x: 320, y: 270, kind: "io", order: 11, file: "memory/monitor.py",
+    role: "measured(phase, action) returns the result plus wall time, whole-GPU peak (nvidia-smi) and RAM peak.",
+    fns: ["measured", "PeakSampler", "gpu_used_mib"],
+    why: "It uses nvidia-smi rather than torch.cuda because vLLM runs in a separate process, and only the driver sees both." },
+  { id: "collect", x: 500, y: 270, kind: "io", order: 12, file: "rollout/collect.py",
+    role: "Runs N independent Pi attempts per task through OpenEnv and keeps the trace, reward and tool-call count.",
+    fns: ["make_factory_builder", "run_rollout", "collect_groups", "turn_tokens"],
+    why: "Training sampling allows temperature only. Truncating with top-p or top-k would make the captured log-probs wrong as the behaviour policy." },
+  { id: "batching", x: 680, y: 270, kind: "pure", order: 2, file: "rollout/batching.py",
+    role: "Turns groups into training rows (only groups with reward variance), and freezes a probe sequence for the sync check.",
+    fns: ["training_rows", "probe_from_groups", "prompts_for_step", "rollout_summary"],
+    why: "A group where every attempt passed, or every attempt failed, has zero advantage, so it is dropped rather than trained on as noise." },
+  { id: "step", x: 860, y: 270, kind: "gpu", order: 4, file: "training/step.py",
+    role: "One optimizer step. Each row is its own micro-batch, and the loss is normalised by the step's total trained tokens, as in TRL.",
+    fns: ["train_step", "sequence_logps", "probe_logps"],
+    why: "It records the LoRA norm before and after the step and the gradient norm, which proves the weights changed. On step 1, mean_abs_logp_diff measures the BF16-vs-NF4 mismatch." },
+  { id: "vllm", x: 90, y: 390, kind: "io", order: 13, file: "inference/vllm_server.py",
+    role: "Builds the vllm serve command and calls the admin endpoints: sleep, wake_up, load and unload LoRA, and prompt_logprobs.",
+    fns: ["serve_command", "sleep", "wake_up", "load_adapter", "prompt_logprobs"],
+    why: "Each update is served under a new name (policy-vN), so no request can ever see a half-swapped adapter." },
+  { id: "qlora", x: 270, y: 390, kind: "gpu", order: 4, file: "training/qlora.py",
+    role: "Loads the NF4 base with a LoRA adapter, saves and restores the adapter plus optimizer state, and frees GPU memory.",
+    fns: ["new_policy", "restore_policy", "save_policy", "lora_norm"],
+    why: "It skips prepare_model_for_kbit_training on purpose: that function would upcast the 151k-token embedding to fp32, about 1.5 GB." },
+  { id: "rewards", x: 470, y: 390, kind: "pure", order: 2, file: "rollout/rewards.py",
+    role: "Harbor's verifier reward, all or nothing, standardised within each group with TRL's rule.",
+    fns: ["correctness_reward", "group_advantages", "has_learning_signal"],
+    why: "A reward of None means the verifier never ran. It is excluded from the group baseline, not counted as a failure." },
+  { id: "traces", x: 640, y: 390, kind: "pure", order: 1, file: "rollout/traces.py",
+    role: "The data contract. A captured model call becomes input_ids, old_logps and loss_mask, and turns linked by an exact token prefix merge into one sequence.",
+    fns: ["merge_turns", "append_turn", "rows_for_rollout", "validate_turn"],
+    why: "Tool output, file contents and prompts always get mask 0. Only tokens the model sampled are trained.", tokens: true },
+  { id: "loss", x: 810, y: 390, kind: "pure", order: 3, file: "training/grpo_loss.py",
+    role: "Clipped GRPO surrogate with beta = 0, matching TRL AsyncGRPOTrainer's score_centering=False branch.",
+    fns: ["grpo_loss_sum", "ClipConfig"],
+    why: "Tokens whose importance ratio falls outside [0.5, 5.0] are dropped, which catches large sampler-vs-trainer mismatches." },
+  { id: "logprobs", x: 965, y: 390, kind: "pure", order: 3, file: "training/logprobs.py",
+    role: "Log-probs of the target tokens, computed in chunks and only at trained positions, then recomputed in the backward pass.",
+    fns: ["selected_token_logps", "trained_positions"],
+    why: "Full fp32 logits for a 12k-token trace would take about 7 GB, nearly half the card." },
+  { id: "openenv", x: 380, y: 505, kind: "ext", order: null, file: "OpenEnv · Harbor · Pi · Docker",
+    role: "The black box. Harbor starts a sandbox, Pi works in it, every model call passes through the capture proxy, and the verifier scores the result.",
+    fns: ["HarborSessionFactory.create", "wait_for_completion", "fetch_training_trace"],
+    why: "It is reused unchanged, as the scope requires: no custom harness and no re-tokenisation." },
+  { id: "vllmext", x: 90, y: 505, kind: "ext", order: null, file: "vLLM server (BF16)",
+    role: "Serves the base model plus the current LoRA adapter, and returns token ids and processed log-probs.",
+    fns: ["--enable-sleep-mode (A)", "--enable-lora", "--logprobs-mode processed_logprobs"],
+    why: "It runs in its own process. How it shares the GPU with the trainer is exactly what Strategies A and B compare." },
+  { id: "distill", x: 920, y: 505, kind: "gpu", order: 14, file: "distill/  (teacher_context · losses · step)",
+    role: "Experiment B: a frozen privileged teacher (same checkpoint plus the reference patch) scores the student's own sampled tokens.",
+    fns: ["distill_example", "chunked_jsd_sum", "sampled_token_loss_sum", "distill_step"],
+    why: "Full-vocabulary JSD and the sampled-token objective are kept as separate functions, because one is not the other's equivalent." },
+];
+const EDGES = [
+  ["cli","tasks"],["cli","pipeline"],["cli","evaluation"],["cli","reports"],
+  ["pipeline","strategies"],["pipeline","monitor"],["pipeline","collect"],["pipeline","batching"],["pipeline","step"],
+  ["evaluation","collect"],["evaluation","strategies"],["reports","traces"],
+  ["strategies","vllm"],["strategies","qlora"],["batching","rewards"],["batching","traces"],
+  ["step","loss"],["step","logprobs"],["step","qlora"],
+  ["collect","openenv"],["vllm","vllmext"],["openenv","vllmext"],
+  ["distill","logprobs"],["distill","traces"],["distill","qlora"],
+];
+const COLORS = { pure: "var(--pure)", gpu: "var(--gpu)", io: "var(--io)", ext: "var(--ext)" };
+const KIND_LABEL = { pure: "pure logic", gpu: "GPU", io: "I/O shell", ext: "external, reused" };
+const W = 150, H = 40, NS = "http://www.w3.org/2000/svg";
+const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+const svg = document.getElementById("graph");
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  parent.appendChild(e);
+  return e;
+}
+
+const edgeEls = EDGES.map(([a, b]) => {
+  const s = byId[a], t = byId[b];
+  const down = t.y > s.y, y1 = s.y + (down ? H / 2 : -H / 2), y2 = t.y + (down ? -H / 2 : H / 2);
+  const my = (y1 + y2) / 2;
+  const p = el("path", { d: `M${s.x},${y1} C${s.x},${my} ${t.x},${my} ${t.x},${y2}`, class: "edge" }, svg);
+  return { a, b, p };
+});
+
+const nodeEls = NODES.map(n => {
+  const g = el("g", { class: "node" + (n.kind === "ext" ? " ext" : ""), tabindex: 0, role: "button",
+    "aria-label": `${n.file}: ${n.role}` }, svg);
+  el("rect", { class: "box", x: n.x - W / 2, y: n.y - H / 2, width: W, height: H, rx: 5 }, g);
+  el("rect", { class: "bar", x: n.x - W / 2, y: n.y - H / 2, width: 4, height: H, fill: COLORS[n.kind] }, g);
+  const short = n.file.split("  ")[0].replace(/\.py$/, "").split("/").filter(Boolean).pop();
+  const label = el("text", { x: n.x + 2, y: n.y + 4, "text-anchor": "middle" }, g);
+  label.textContent = n.kind === "ext" ? n.file.split(" (")[0].slice(0, 20) : short;
+  if (n.order) {
+    const o = el("text", { class: "order", x: n.x + W / 2 - 6, y: n.y - H / 2 + 11, "text-anchor": "end" }, g);
+    o.textContent = n.order;
+  }
+  g.addEventListener("click", () => select(n.id));
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(n.id); } });
+  return { n, g };
+});
+
+const TOKENS = [["sys", 0], ["user", 0], ["tools", 0], ["<call>", 1], ["read", 1], ["file", 1], ["</call>", 1],
+  ["result…", 0], ["…", 0], ["<call>", 1], ["edit", 1], ["</call>", 1]];
+
+function select(id) {
+  const n = byId[id];
+  const near = new Set([id]);
+  edgeEls.forEach(({ a, b, p }) => {
+    const hot = a === id || b === id;
+    p.classList.toggle("hot", hot);
+    if (hot) { near.add(a); near.add(b); }
+  });
+  nodeEls.forEach(({ n: m, g }) => {
+    g.classList.toggle("sel", m.id === id);
+    g.classList.toggle("dim", !near.has(m.id));
+  });
+  const deps = EDGES.filter(([a]) => a === id).map(([, b]) => byId[b].file.split("  ")[0]);
+  const users = EDGES.filter(([, b]) => b === id).map(([a]) => byId[a].file.split("  ")[0]);
+  const tokens = n.tokens ? `<div class="tokens" aria-label="loss mask example">${TOKENS.map(([t, on]) =>
+    `<span class="tok${on ? " on" : ""}">${t}</span>`).join("")}</div>
+    <p class="note" style="margin-top:6px">Highlighted tokens have loss_mask&nbsp;=&nbsp;1 (sampled by the model). The rest are context.</p>` : "";
+  document.getElementById("detail").innerHTML = `
+    <div class="file">${n.file}</div>
+    <span class="tag" style="color:${COLORS[n.kind]}">${KIND_LABEL[n.kind]}</span>${n.order ? `<span class="tag" style="color:var(--muted)">read #${n.order}</span>` : ""}
+    <p>${n.role}</p>
+    <ul>${n.fns.map(f => `<li><code>${f}</code></li>`).join("")}</ul>
+    ${tokens}
+    ${deps.length ? `<p class="note">Uses: ${deps.map(d => `<code>${d}</code>`).join(", ")}</p>` : ""}
+    ${users.length ? `<p class="note" style="margin-top:4px">Used by: ${users.map(d => `<code>${d}</code>`).join(", ")}</p>` : ""}
+    <div class="why">${n.why}</div>`;
+}
+
+const PATH = [
+  ["traces", "Which tokens get trained?"], ["rewards", "How does a verifier score become an advantage?"],
+  ["batching", "Which groups make it into a batch?"], ["loss", "What exactly is optimised?"],
+  ["step", "How is one update done, and how is it proven?"], ["strategies", "How do vLLM and the trainer share 16 GB?"],
+  ["pipeline", "How does it all loop?"], ["cli", "How do I run it?"],
+];
+document.getElementById("path").innerHTML = PATH.map(([id, q], i) =>
+  `<li><button data-id="${id}"><span class="n">${i + 1}</span><span class="f">${byId[id].file.split("  ")[0]}</span><span class="q">${q}</span></button></li>`).join("");
+document.querySelectorAll(".path button").forEach(b => b.addEventListener("click", () => {
+  select(b.dataset.id);
+  document.querySelector(".graph").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}));
+
+const GPU = 16.3;
+const BUDGET = {
+  sleep: { note: "The trainer stays resident, so vLLM gets less KV cache during rollouts (about 1.5 GB, roughly one full 12k-token agent trace at a time). There are no reloads between phases.",
+    rows: [["Start", "load trainer, then vLLM", [["trainer", 3.8], ["vllm", 10.1]]],
+           ["Rollouts", "Pi through vLLM", [["trainer", 3.8], ["vllm", 10.1]]],
+           ["Training", "vLLM asleep (level 1)", [["trainer", 9.0], ["vllm", 0.6]]],
+           ["Sync", "wake, then load policy-vN+1", [["trainer", 3.8], ["vllm", 10.1]]]] },
+  seq: { note: "Only one engine is alive at a time, so vLLM gets about 5 GB of KV cache. Each switch pays a vLLM restart and an NF4 reload, which Day 1 measures as switch_seconds.",
+    rows: [["Start", "create v0, free GPU", [["trainer", 0.5]]],
+           ["Rollouts", "fresh vLLM with vN", [["trainer", 0.5], ["vllm", 13.9]]],
+           ["Training", "vLLM stopped, trainer restored", [["trainer", 9.0]]],
+           ["Sync", "restart vLLM with vN+1", [["trainer", 0.5], ["vllm", 13.9]]]] },
+};
+const SEG = { trainer: ["var(--trainer)", "QLoRA trainer process"], vllm: ["var(--vllm)", "vLLM process"] };
+
+function showBudget(key) {
+  const plan = BUDGET[key];
+  document.getElementById("budget").innerHTML = `
+    <div class="legend"><span><i class="dot" style="background:var(--trainer)"></i>${SEG.trainer[1]}</span>
+    <span><i class="dot" style="background:var(--vllm)"></i>${SEG.vllm[1]}</span>
+    <span><i class="dot" style="background:var(--free)"></i>free</span></div>` +
+    plan.rows.map(([phase, sub, segs]) => {
+      const used = segs.reduce((s, [, gb]) => s + gb, 0);
+      return `<div class="row"><div class="label">${phase}<small>${sub}</small></div>
+        <div class="meter" role="img" aria-label="${phase}: ${used.toFixed(1)} of ${GPU} GB">${segs.map(([k, gb]) =>
+          `<span style="width:${(gb / GPU * 100).toFixed(1)}%;background:${SEG[k][0]}" title="${SEG[k][1]}: ${gb} GB"></span>`).join("")}</div>
+        <div class="total">${used.toFixed(1)}/${GPU}</div></div>`;
+    }).join("");
+  document.getElementById("budget-note").textContent = plan.note;
+  document.getElementById("btn-sleep").setAttribute("aria-pressed", String(key === "sleep"));
+  document.getElementById("btn-seq").setAttribute("aria-pressed", String(key === "seq"));
+}
+document.getElementById("btn-sleep").addEventListener("click", () => showBudget("sleep"));
+document.getElementById("btn-seq").addEventListener("click", () => showBudget("seq"));
+
+select("traces");
+showBudget("sleep");
+</script>
