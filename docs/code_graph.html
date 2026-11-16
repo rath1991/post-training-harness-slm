@@ -80,6 +80,33 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 .tok { font-family: var(--mono); font-size: 0.75rem; padding: 3px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
 .tok.on { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
 @media (prefers-reduced-motion: no-preference) { .node, .edge { transition: opacity .15s, stroke .15s; } }
+.flow { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+@media (max-width: 960px) { .flow { grid-template-columns: 1fr; } }
+.flowwrap { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; min-width: 0; }
+.flowwrap svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.lane-box { fill: var(--bg); stroke: var(--line); }
+.lane-title { fill: var(--fg); font: 600 13px var(--sans); }
+.lane-sub { fill: var(--muted); font: 11px var(--sans); }
+.lifeline { stroke: var(--line); stroke-dasharray: 3 4; }
+.band { fill: var(--accent-soft); opacity: 0.45; }
+.band-label { fill: var(--muted); font: 600 10.5px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
+.loop { fill: none; stroke: var(--muted); stroke-dasharray: 5 4; }
+.loop-label { fill: var(--muted); font: italic 11px var(--sans); }
+.msg { cursor: pointer; outline: none; }
+.msg .hit { fill: transparent; }
+.msg line, .msg path.arc { stroke-width: 1.7; fill: none; }
+.msg text.lbl { font: 12px var(--sans); fill: var(--fg); }
+.msg text.num { font: 600 10.5px var(--sans); fill: var(--bg); }
+.msg.sel .hit { fill: var(--accent-soft); }
+.msg.sel text.lbl { font-weight: 600; }
+.msg:focus-visible .hit { stroke: var(--accent); }
+.msg.off { opacity: 0.28; }
+.flowdetail { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; min-width: 0; }
+.flowdetail h3 { font-size: 1rem; margin: 6px 0 0; }
+.flowdetail p { margin: 10px 0 0; }
+.step-nav { display: flex; gap: 8px; margin-top: 14px; }
+.step-nav button { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 5px; padding: 5px 12px; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.step-nav button:hover, .step-nav button:focus-visible { border-color: var(--accent); outline: none; }
 </style>
 
 <div class="wrap">
@@ -88,6 +115,26 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
     <p class="lede">Black-box GRPO and privileged distillation for a 4B coder running inside Pi, Harbor and OpenEnv on one 16&nbsp;GB GPU. Select a module to see what it does and what it depends on. The numbers give the suggested reading order.</p>
   </header>
 
+  <section>
+    <h2>One training iteration across the black box</h2>
+    <p class="lede" style="margin:0 0 12px">Select a step to see what happens, which code does it, and who owns it. The switch shows how the same systems are wired in TRL's own two-GPU design, which <code>harness-rl</code> replaces on one GPU.</p>
+    <div class="toggle" role="group" aria-label="Design">
+      <button id="btn-ours" aria-pressed="true">harness-rl · 1 GPU (this repo)</button>
+      <button id="btn-stock" aria-pressed="false">Stock TRL · 2 GPUs</button>
+    </div>
+    <div class="legend" style="margin-bottom:12px">
+      <span><i class="dot" style="background:var(--io)"></i>Reused black box (OpenEnv, Harbor, Pi, vLLM)</span>
+      <span><i class="dot" style="background:var(--trainer)"></i>TRL's rule or convention</span>
+      <span><i class="dot" style="background:var(--accent)"></i>Custom code in harness-rl</span>
+    </div>
+    <div class="flow">
+      <div class="flowwrap"><svg id="flow" viewBox="0 0 1040 720" role="img" aria-label="Sequence of one training iteration"></svg></div>
+      <aside class="flowdetail" id="flowdetail" aria-live="polite"></aside>
+    </div>
+    <p class="note" id="trl-note"></p>
+  </section>
+
+  <h2 style="margin:0">Code map</h2>
   <div class="legend" aria-label="Legend">
     <span><i class="dot" style="background:var(--pure)"></i>Pure logic (testable without a GPU)</span>
     <span><i class="dot" style="background:var(--gpu)"></i>Touches the GPU</span>
@@ -322,6 +369,153 @@ function showBudget(key) {
 document.getElementById("btn-sleep").addEventListener("click", () => showBudget("sleep"));
 document.getElementById("btn-seq").addEventListener("click", () => showBudget("seq"));
 
+const LANES = [
+  { x: 105, title: { ours: "harness-rl", stock: "TRL trainer" },
+    sub: { ours: "pipeline + QLoRA · same GPU", stock: "HarnessAsyncGRPOTrainer · GPU 1" } },
+  { x: 315, title: { ours: "OpenEnv", stock: "OpenEnv" }, sub: { ours: "session factory · capture :8300", stock: "session factory · capture :8300" } },
+  { x: 525, title: { ours: "Harbor", stock: "Harbor" }, sub: { ours: "task server :8200 · verifier", stock: "task server :8200 · verifier" } },
+  { x: 735, title: { ours: "Pi agent", stock: "Pi agent" }, sub: { ours: "in offline Docker sandbox", stock: "in offline Docker sandbox" } },
+  { x: 945, title: { ours: "vLLM", stock: "vLLM" }, sub: { ours: ":8000 · shares the GPU", stock: ":8000 · own GPU 0" } },
+];
+const KIND = {
+  reused: ["var(--io)", "Reused unchanged"],
+  trl: ["var(--trainer)", "TRL rule, same maths"],
+  custom: ["var(--accent)", "Custom in harness-rl"],
+};
+const PHASES = [["Serve", 1, 1], ["Rollouts: 4 attempts per task", 2, 10], ["Check", 11, 11], ["Train", 12, 14]];
+const LOOP = [5, 8, "repeat until Pi stops, at most 30 steps"];
+const STEPS = [
+  { from: 0, to: 4, label: "serve policy-vN", kind: "custom",
+    text: "Strategy A wakes the sleeping vLLM, hot-loads the new adapter with POST /v1/load_lora_adapter and unloads the previous one. Strategy B starts a fresh vLLM process with policy-vN preloaded. Either way only a ~60 MB LoRA adapter moves; the 4B base weights never change.",
+    code: "memory/strategies.py · to_inference",
+    stock: { label: "load_lora_adapter trl-policy-vN", kind: "trl",
+      text: "TRL saves the adapter and calls /v1/load_lora_adapter on a vLLM server that runs on its own GPU and never stops. harness-rl copies this naming and hot-load convention." } },
+  { from: 0, to: 1, label: "create(task, seed) × 4", kind: "reused",
+    text: "For each task in the step, harness-rl asks OpenEnv's HarborSessionFactory for 4 sessions (num_generations = 4) and runs them in a thread pool. Sampling is temperature only, set through training_sampling. The factory API is used as published.",
+    code: "rollout/collect.py · collect_groups, run_rollout",
+    stock: { kind: "trl", text: "TRL's rollout workers call the same factory, but asynchronously: the next batch is collected while the previous one trains on the other GPU." } },
+  { from: 1, to: 2, label: "start session (split, harness = pi)", kind: "reused",
+    text: "OpenEnv asks the Harbor server on :8200 for a session on one task from the prepared split (data/harbor/<split>), with Pi as the agent.",
+    code: "OpenEnv harbor_env (vendor/OpenEnv/envs)" },
+  { from: 2, to: 3, label: "build sandbox, launch Pi", kind: "reused",
+    text: "Harbor builds the task's environment/Dockerfile (base image + repo + setup.sh), starts an offline container and launches Pi with the task instruction. solution/ and tests/ are never in the image; tasks/harbor_layout.py refuses any task that would leak them. Runbook assumption 1 (Pi on Node 18 without internet) is checked here first.",
+    code: "tasks/harbor_layout.py prepares the layout; Harbor does the rest" },
+  { from: 3, to: 1, label: "chat completion + tools", kind: "reused",
+    text: "Pi calls an OpenAI-compatible endpoint. Its base URL points at OpenEnv's capture proxy on :8300, not at vLLM, so Pi runs unmodified and does not know it is being recorded.",
+    code: "Pi (unchanged)" },
+  { from: 1, to: 4, label: "forward, record tokens", kind: "reused",
+    text: "The proxy forwards the call to vLLM (model policy-vN) and asks for token ids and log-probs. It records every call as a TrainingTurn: prompt_token_ids, completion_token_ids, per_token_logps and loss_mask. These are the exact tokens the policy sampled, so no re-tokenisation happens later.",
+    code: "OpenEnv capture proxy; vLLM flags in inference/vllm_server.py" },
+  { from: 4, to: 3, label: "reply: tool call (via proxy)", kind: "reused",
+    text: "vLLM's reply goes back through the proxy to Pi, parsed into tool calls by the hermes parser.",
+    code: "inference/vllm_server.py · serve_command" },
+  { from: 3, to: 3, label: "run tool in sandbox", kind: "reused",
+    text: "Pi runs the tool (read, edit, bash) inside the container and feeds the output into its next call. Steps 5–8 repeat until Pi finishes or hits the 30-step limit. Tool output becomes context in the next turn and is never trained on.",
+    code: "Pi (unchanged)" },
+  { from: 2, to: 2, label: "verifier → reward.json", kind: "reused",
+    text: "After Pi stops, Harbor adds the hidden tests and runs them. The verifier writes reward.json with reward 1 or 0, all or nothing.",
+    code: "Harbor verifier (unchanged)" },
+  { from: 1, to: 0, label: "reward + training trace", kind: "reused",
+    text: "harness-rl calls wait_for_completion(), reads result.reward, fetches the training trace and closes the session. A broken sandbox comes back as an error result instead of stopping the run.",
+    code: "rollout/collect.py · run_rollout, turn_tokens" },
+  { from: 0, to: 4, label: "probe log-probs (sync check)", kind: "custom",
+    text: "Sends a fixed probe sequence to /v1/completions with prompt_logprobs and compares the answer with the trainer's own log-probs. Small difference plus a change from the previous version proves vLLM serves the adapter that was just trained.",
+    code: "pipeline.py · sync_check, served_logps",
+    stock: { off: true, text: "Not in stock TRL. harness-rl adds it because adapter hand-over between two processes on one GPU is the riskiest custom part." } },
+  { from: 0, to: 0, label: "merge turns, mask, advantages", kind: "trl",
+    text: "Turns that extend each other are merged into one sequence. Prompt and tool-output tokens get loss_mask 0. Each group of 4 rewards becomes advantages (r − mean) / (std + 1e-8) with population std; groups where all 4 score the same carry no signal and are dropped. This is TRL's rule.",
+    code: "rollout/traces.py, rollout/rewards.py, rollout/batching.py",
+    stock: { text: "TRL does the same inside its trainer: group z-score, NaN rewards excluded, zero-variance groups dropped." } },
+  { from: 0, to: 4, label: "free GPU: sleep / stop", kind: "custom",
+    text: "Strategy A puts vLLM to sleep (level 1: weights to CPU, KV cache freed) while the trainer stays resident. Strategy B stops vLLM entirely and reloads the NF4 trainer. Day 1 measures which hand-over is cheaper.",
+    code: "memory/strategies.py · to_training",
+    stock: { off: true, text: "Not needed: in TRL's design the trainer has its own GPU, so vLLM never gives memory back. This is the step that makes one 16 GB card possible." } },
+  { from: 0, to: 0, label: "GRPO step → save policy-vN+1", kind: "trl",
+    text: "One optimizer step on the NF4 base + LoRA using TRL's clipped surrogate (eps 0.2 / 0.28, importance-ratio clip [0.5, 5], beta = 0), normalised by the number of trained tokens. The new adapter is saved and the loop returns to step 1.",
+    code: "training/step.py · train_step; training/grpo_loss.py",
+    stock: { text: "Identical rule, run by TRL's trainer on GPU 1 with a merged or LoRA weight sync afterwards." } },
+];
+const ROW0 = 112, ROWH = 42, FS = document.getElementById("flow");
+let design = "ours", current = 0;
+const rowY = i => ROW0 + i * ROWH;
+const view = s => ({ ...s, ...(design === "stock" ? s.stock || {} : {}) });
+
+function drawFlow() {
+  FS.innerHTML = "";
+  const defs = el("defs", {}, FS);
+  Object.entries(KIND).forEach(([k, [c]]) => {
+    const m = el("marker", { id: `ah-${k}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0,0 L10,5 L0,10 z", style: `fill:${c}` }, m);
+  });
+  const bottom = rowY(STEPS.length - 1) + 30;
+  PHASES.forEach(([name, a, b], i) => {
+    const y = rowY(a - 1) - ROWH / 2, h = (b - a + 1) * ROWH;
+    if (i % 2 === 0) el("rect", { class: "band", x: 0, y, width: 1040, height: h }, FS);
+    el("text", { class: "band-label", x: 1032, y: y + 13, "text-anchor": "end" }, FS).textContent = name;
+  });
+  LANES.forEach(l => {
+    el("line", { class: "lifeline", x1: l.x, y1: 72, x2: l.x, y2: bottom }, FS);
+    el("rect", { class: "lane-box", x: l.x - 92, y: 18, width: 184, height: 52, rx: 6 }, FS);
+    el("text", { class: "lane-title", x: l.x, y: 40, "text-anchor": "middle" }, FS).textContent = l.title[design];
+    el("text", { class: "lane-sub", x: l.x, y: 57, "text-anchor": "middle" }, FS).textContent = l.sub[design];
+  });
+  const [la, lb, ltxt] = LOOP;
+  const ly = rowY(la - 1) - ROWH / 2 + 3, lh = (lb - la + 1) * ROWH - 6;
+  el("rect", { class: "loop", x: 290, y: ly, width: 690, height: lh, rx: 6 }, FS);
+  el("text", { class: "loop-label", x: 972, y: ly + lh - 7, "text-anchor": "end" }, FS).textContent = "↻ " + ltxt;
+  STEPS.forEach((raw, i) => {
+    const s = view(raw), y = rowY(i), c = KIND[s.kind][0];
+    const g = el("g", { class: "msg" + (s.off ? " off" : ""), tabindex: 0, role: "button", "aria-label": `Step ${i + 1}: ${s.label}` }, FS);
+    const x1 = LANES[s.from].x, x2 = LANES[s.to].x;
+    const left = Math.min(x1, x2) - 24, right = s.from === s.to ? x1 + 230 : Math.max(x1, x2) + 8;
+    el("rect", { class: "hit", x: left, y: y - ROWH / 2 + 2, width: right - left, height: ROWH - 4, rx: 4 }, g);
+    if (s.from === s.to) {
+      el("path", { class: "arc", d: `M${x1},${y - 8} h34 v16 h-30`, stroke: c, "marker-end": `url(#ah-${s.kind})` }, g);
+      el("text", { class: "lbl", x: x1 + 44, y: y + 4 }, g).textContent = s.label;
+    } else {
+      const dir = Math.sign(x2 - x1);
+      el("line", { x1: x1 + dir * 4, y1: y + 6, x2: x2 - dir * 3, y2: y + 6, stroke: c, "marker-end": `url(#ah-${s.kind})` }, g);
+      el("text", { class: "lbl", x: (x1 + x2) / 2, y: y - 2, "text-anchor": "middle" }, g).textContent = s.label;
+    }
+    el("circle", { cx: x1 - 14, cy: y - 5 + (s.from === s.to ? 5 : 0), r: 9, fill: c }, g);
+    el("text", { class: "num", x: x1 - 14, y: y - 1.5 + (s.from === s.to ? 5 : 0), "text-anchor": "middle" }, g).textContent = i + 1;
+    g.addEventListener("click", () => showStep(i));
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showStep(i); } });
+  });
+  showStep(current);
+}
+
+function showStep(i) {
+  current = i;
+  const s = view(STEPS[i]), [c, who] = KIND[s.kind];
+  FS.querySelectorAll(".msg").forEach((g, j) => g.classList.toggle("sel", j === i));
+  const differs = design === "stock" && STEPS[i].stock;
+  document.getElementById("flowdetail").innerHTML = `
+    <span class="tag" style="color:var(--muted)">step ${i + 1} of ${STEPS.length}</span><span class="tag" style="color:${c}">${s.off ? "Not in this design" : who}</span>
+    <h3>${s.label}</h3>
+    <p>${s.text}</p>
+    ${differs ? `<p class="note">In harness-rl: ${STEPS[i].text}</p>` : ""}
+    <p class="note">Code: <code>${STEPS[i].code}</code></p>
+    <div class="step-nav"><button id="step-prev" ${i === 0 ? "disabled" : ""}>← Previous</button><button id="step-next" ${i === STEPS.length - 1 ? "disabled" : ""}>Next →</button></div>`;
+  document.getElementById("step-prev").addEventListener("click", () => showStep(Math.max(0, i - 1)));
+  document.getElementById("step-next").addEventListener("click", () => showStep(Math.min(STEPS.length - 1, i + 1)));
+}
+
+const TRL_NOTE = {
+  ours: "Where TRL sits in harness-rl: its trainer process is not used, because HarnessAsyncGRPOTrainer needs a second GPU and has no sleep mode or QLoRA path. What is kept from TRL is the maths and the conventions: advantages (step 12), the clipped GRPO loss (step 14) and adapter hot-loading (step 1). OpenEnv, Harbor, Pi and vLLM run unchanged. scripts/probe_stock_trainer.py documents the blocker.",
+  stock: "In TRL's own design the trainer is the orchestrator: it owns the rollout workers, trains on GPU 1 while vLLM generates on GPU 0, and pushes each new adapter to vLLM. Steps 11 and 13 do not exist there. That is the design harness-rl follows as closely as one 16 GB GPU allows.",
+};
+function setDesign(d) {
+  design = d;
+  document.getElementById("btn-ours").setAttribute("aria-pressed", String(d === "ours"));
+  document.getElementById("btn-stock").setAttribute("aria-pressed", String(d === "stock"));
+  document.getElementById("trl-note").textContent = TRL_NOTE[d];
+  drawFlow();
+}
+document.getElementById("btn-ours").addEventListener("click", () => setDesign("ours"));
+document.getElementById("btn-stock").addEventListener("click", () => setDesign("stock"));
+
+setDesign("ours");
 select("traces");
 showBudget("sleep");
 </script>
