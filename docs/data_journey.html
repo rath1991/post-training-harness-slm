@@ -1,0 +1,898 @@
+<meta charset="utf-8">
+<title>harness_rl Data Journey</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: header with the data-shape strip, then a debugger-style stepper: chronological
+   step list on the left, one step (input → function → output) on the right. Same tokens
+   as code_graph.html so the two pages read as one set. */
+:root {
+  --bg: #f6f7f5; --surface: #ffffff; --fg: #1d2420; --muted: #5c6862; --line: #d5dbd7;
+  --accent: #2f6f5e; --accent-soft: #e2efea; --warn: #a5641c; --warn-soft: #f6eadb;
+  --bad: #a33b3b; --bad-soft: #f5e3e3; --io: #3d5a8a; --io-soft: #e3e9f3;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --surface: #1a201d; --fg: #e3e8e5; --muted: #98a59e; --line: #2e3833;
+  --accent: #6cc2a8; --accent-soft: #1f3a32; --warn: #e0a35c; --warn-soft: #3a2d1c;
+  --bad: #e58a8a; --bad-soft: #3d2222; --io: #8fb0e6; --io-soft: #1f2a3d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121614; --surface: #1a201d; --fg: #e3e8e5; --muted: #98a59e; --line: #2e3833;
+  --accent: #6cc2a8; --accent-soft: #1f3a32; --warn: #e0a35c; --warn-soft: #3a2d1c;
+  --bad: #e58a8a; --bad-soft: #3d2222; --io: #8fb0e6; --io-soft: #1f2a3d; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px; }
+h1 { font-size: 1.6rem; font-weight: 600; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.15rem; font-weight: 600; margin: 0; text-wrap: balance; }
+h3 { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.lede { color: var(--muted); max-width: 72ch; margin: 6px 0 0; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+p { margin: 0; }
+
+/* data-shape strip */
+.shapes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.shapes button { font: 500 0.78rem var(--mono); background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+.shapes button:hover, .shapes button:focus-visible { border-color: var(--accent); outline: none; }
+.shapes button.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.shapes .arr { color: var(--muted); font-size: 0.8rem; }
+.vocab { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 0.8rem; color: var(--muted); }
+.vocab span b { font-family: var(--mono); font-weight: 500; color: var(--fg); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.facts > div { min-width: 0; }
+
+/* stepper */
+.main { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 20px; align-items: start; }
+.nav { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 6px; }
+.nav .phase { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 10px 10px 4px; }
+.nav ol { list-style: none; margin: 0; padding: 0; }
+.nav button { width: 100%; text-align: left; background: none; border: 0; border-radius: 5px; color: var(--fg); font: inherit;
+  font-size: 0.84rem; padding: 4px 10px; cursor: pointer; display: grid; grid-template-columns: 26px 1fr; gap: 4px; }
+.nav button .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav button .f { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+.nav button:hover, .nav button:focus-visible { background: var(--accent-soft); outline: none; }
+.nav button.on { background: var(--accent); color: var(--bg); }
+.nav button.on .n { color: var(--bg); }
+.picker { display: none; }
+.picker select { width: 100%; font: inherit; padding: 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .nav { display: none; }
+  .picker { display: block; }
+}
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.eyebrow { font-size: 0.78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.eyebrow .ph { color: var(--accent); font-weight: 600; }
+.title { font-family: var(--mono); font-size: 1.05rem; font-weight: 500; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.8rem; }
+.chip { border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; color: var(--muted); }
+.chip b { font-family: var(--mono); font-weight: 500; color: var(--fg); }
+.plain { max-width: 75ch; }
+.plain p + p { margin-top: 8px; }
+.io { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 700px) { .io { grid-template-columns: 1fr; } }
+.io > div { min-width: 0; }
+pre.code { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+  font: 0.8rem/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+pre.code mark { background: var(--accent-soft); color: var(--fg); border-radius: 2px; padding: 0 1px; outline: 1px solid var(--accent); }
+pre.code .dim { color: var(--muted); }
+pre.code .bad { color: var(--bad); }
+.visual { display: grid; gap: 8px; min-width: 0; }
+.note { font-size: 0.86rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; max-width: 80ch; }
+.note b { color: var(--fg); font-weight: 600; }
+.stepnav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.stepnav button { font: inherit; font-size: 0.88rem; background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+.stepnav button:hover, .stepnav button:focus-visible { border-color: var(--accent); outline: none; }
+.stepnav button:disabled { opacity: 0.4; cursor: default; }
+.kbd { font-size: 0.78rem; color: var(--muted); align-self: center; }
+
+/* token strips */
+.strip-wrap { overflow-x: auto; padding-bottom: 2px; }
+.strip { display: flex; gap: 4px; width: max-content; }
+.tok { display: grid; justify-items: center; gap: 1px; min-width: 64px; padding: 5px 4px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--surface); font-family: var(--mono); font-size: 0.72rem; }
+.tok b { font-weight: 500; font-size: 0.8rem; color: var(--fg); }
+.tok .i, .tok .id, .tok .lp { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tok .m { font-size: 0.68rem; color: var(--muted); }
+.tok.m1 { background: var(--accent-soft); border-color: var(--accent); }
+.tok.m1 .m { color: var(--accent); font-weight: 500; }
+.tok.gap { border-style: dashed; border-color: var(--io); }
+.tok.newt { box-shadow: 0 0 0 2px var(--accent) inset; }
+.tok.drop { background: var(--bad-soft); border-color: var(--bad); }
+.tok.sep { border-left: 3px solid var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.78rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 12px; border-radius: 2px; border: 1px solid var(--line); display: inline-block; background: var(--surface); }
+.sw.m1 { background: var(--accent-soft); border-color: var(--accent); }
+.sw.gap { border-style: dashed; border-color: var(--io); }
+.sw.drop { background: var(--bad-soft); border-color: var(--bad); }
+.sw.sep { border-left: 3px solid var(--warn); }
+.cap { font-size: 0.8rem; color: var(--muted); }
+
+table.t { border-collapse: collapse; font-size: 0.82rem; width: max-content; min-width: 100%; }
+table.t th, table.t td { padding: 5px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+table.t th { color: var(--muted); font-weight: 600; font-size: 0.76rem; }
+table.t td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+table.t td.mono { font-family: var(--mono); }
+table.t tr.drop td { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--bad); }
+table.t tr.hl td { background: var(--accent-soft); }
+.tablewrap { overflow-x: auto; }
+.pill { font-size: 0.72rem; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--accent); } .pill.no { color: var(--bad); } .pill.warn { color: var(--warn); } .pill.io { color: var(--io); }
+@media (prefers-reduced-motion: no-preference) { .card { animation: fade 0.18s ease-out; } }
+@keyframes fade { from { opacity: 0.6; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>harness_rl data journey</h1>
+    <p class="lede">One made-up task, <code>fix-sum-range</code>, followed through one full GRPO iteration with Strategy&nbsp;B (sequential). Every step is one function, in the order it runs: what goes in, what it does, what comes out. Values are toy-sized but shaped exactly like the real data structures. Use ← and → to step.</p>
+  </header>
+
+  <section class="facts" aria-label="Key facts">
+    <div>
+      <h3>How the data changes shape</h3>
+      <div class="shapes" id="shapes"></div>
+    </div>
+    <div>
+      <h3>Toy vocabulary (token id → text)</h3>
+      <div class="vocab" id="vocab"></div>
+      <p class="cap" style="margin-top:6px">Real runs use Qwen token ids and traces of up to ≈12k tokens; here every call is 3–4 tokens so you can follow each one.</p>
+    </div>
+    <div>
+      <h3>Run settings in this example</h3>
+      <p class="cap"><code>configs/smoke_sequential.toml</code>: 2 tasks per step × 4 attempts each, LoRA rank&nbsp;16 (alpha&nbsp;32), vLLM gets 85% of the GPU while it runs, and nothing else is on the GPU at the same time.</p>
+    </div>
+  </section>
+
+  <div class="main">
+    <nav class="nav" id="nav" aria-label="Steps in order"></nav>
+    <div style="display:grid; gap:12px; min-width:0">
+      <div class="picker"><label class="cap" for="step-select">Step</label><select id="step-select"></select></div>
+      <article class="card" id="card" aria-live="polite"></article>
+    </div>
+  </div>
+</div>
+
+<script>
+const V = {101:"⟨sys⟩",102:"Fix",103:"sum_range",104:"⟨tools⟩",201:"⟨call⟩",202:"read",203:"⟨/call⟩",
+  301:"⟨result⟩",302:"range(a,b)",205:"edit",206:"b+1",208:"b-1",309:"⟨summary⟩"};
+
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const pre = html => `<pre class="code">${html}</pre>`;
+const fmt = x => x === "" || x === undefined ? "" : (typeof x === "number" ? x.toFixed(2) : x);
+
+// One token cell. opts: i (position), m (mask), lp (log-prob), cls (extra classes)
+function tok(id, o = {}) {
+  const cls = ["tok", o.m === 1 ? "m1" : "", o.cls || ""].join(" ");
+  return `<div class="${cls}">${o.i !== undefined ? `<span class="i">#${o.i}</span>` : ""}<b>${esc(V[id] ?? id)}</b>` +
+    `<span class="id">${id}</span>${o.m !== undefined ? `<span class="m">mask ${o.m}</span>` : ""}` +
+    `${o.lp !== undefined ? `<span class="lp">${fmt(o.lp)}</span>` : ""}</div>`;
+}
+const strip = cells => `<div class="strip-wrap"><div class="strip">${cells.join("")}</div></div>`;
+function legend(items) {
+  const L = { m1: "loss_mask 1: sampled by the model, trained", ctx: "loss_mask 0: context, never trained",
+    gap: "new context between calls (tool result)", newt: "just added by this step", drop: "dropped from the loss",
+    sep: "prompt | completion boundary" };
+  return `<div class="legend">${items.map(k => `<span><i class="sw ${k === "ctx" ? "" : k}"></i>${L[k]}</span>`).join("")}</div>`;
+}
+function table(head, rows, rowCls = []) {
+  return `<div class="tablewrap"><table class="t"><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map((r, i) => `<tr class="${rowCls[i] || ""}">${r.map(c => typeof c === "object" ? `<td class="${c.c}">${c.v}</td>` : `<td>${c}</td>`).join("")}</tr>`).join("") +
+    `</tbody></table></div>`;
+}
+const num = v => ({ c: "num", v });
+const mono = v => ({ c: "mono", v });
+
+// Toy rollout A#0 (passed): two model calls, the second continues the first.
+const T1P = [101, 102, 103, 104], T1C = [201, 202, 203], T1L = [-0.2, -0.5, -0.1];
+const T2P = [...T1P, ...T1C, 301, 302], T2C = [205, 206, 203], T2L = [-0.4, -1.2, -0.1];
+const SEQ = [...T2P, ...T2C];
+const SEQ_M = [0,0,0,0,1,1,1,0,0,1,1,1];
+const SEQ_L = [0,0,0,0,-0.2,-0.5,-0.1,0,0,-0.4,-1.2,-0.1];
+
+const STEPS = [
+// ───────────────────────── Phase 0 ─────────────────────────
+{ id: "read-manifest", phase: "Prepare tasks (harness-rl prepare-data, once)", shape: "TaskRecord",
+  title: "read_manifest(path) → parse_task(row)", loc: "tasks/manifest.py:45, :25", from: "cli.prepare_data",
+  plain: `<p>The dataset ships a <code>manifest.jsonl</code>: one JSON line per task. Each line is turned into a frozen <code>TaskRecord</code>. This is the only place raw dataset fields are read, so everything later works with typed values.</p>`,
+  input: pre(`<span class="dim"># data/smol-software-harbor/manifest.jsonl (one line)</span>
+{"id": "fix-sum-range", "codebase": "mathkit",
+ "language": "python", "task_type": "bugfix",
+ "difficulty": 1, "split": "train",
+ "oracle_steps": 2, "search": null,
+ "path": "tasks/fix-sum-range"}`),
+  output: pre(`TaskRecord(
+  task_id=<mark>'fix-sum-range'</mark>,   <span class="dim"># from "id"</span>
+  codebase='mathkit', language='python',
+  task_type='bugfix', difficulty=1,
+  split='train', oracle_steps=2,
+  search=<mark>False</mark>,             <span class="dim"># null → False</span>
+  path='tasks/fix-sum-range')`),
+  note: `<b>Why:</b> the manifest leaves <code>search</code> as null on non-search tasks, so <code>parse_task</code> turns it into a real boolean once, here.` },
+
+{ id: "build-partitions", phase: "Prepare tasks (harness-rl prepare-data, once)", shape: "Partitions",
+  title: "build_partitions(tasks, SplitSizes(), seed=0)", loc: "tasks/splits.py:111", from: "cli.prepare_data",
+  plain: `<p>All task records are split into four fixed sets using the dataset's own labels: train, held-out eval, out-of-distribution (OOD), and a small smoke set. Sampling is stratified, so each set keeps the dataset's mix of language, task type, difficulty and expected tool calls. The smoke set is taken only from difficulty-1 training tasks, so a 4B model has a real chance of passing some attempts.</p>`,
+  input: pre(`tasks = (TaskRecord('fix-sum-range', …),
+         TaskRecord('add-docstring', …), … )
+sizes = SplitSizes(train=400, eval=100,
+                   ood=50, smoke=8)
+seed  = 0`),
+  output: pre(`Partitions(
+  train=(…400 tasks…),
+  eval=(…100 tasks…),
+  ood=(…native OOD tasks…),
+  smoke=(<mark>TaskRecord('fix-sum-range')</mark>,
+         <mark>TaskRecord('add-docstring')</mark>, … 8),
+  notes=(…))`),
+  visual: table(["Function", "For fix-sum-range"], [
+    [mono("full_stratum(task)"), mono("('python', 'bugfix', 1, '2-3')")],
+    [mono("tool_call_bucket(2)"), mono("'2-3'")],
+    [mono("coarse_stratum(task)  <span class='dim'>(smoke)</span>"), mono("('python', 'bugfix')")],
+    [mono("assert_codebase_disjoint"), "train never shares a codebase with eval or OOD"]]),
+  note: `<b>Order matters:</b> <code>stratified_sample</code> sorts by task id before drawing, so the same seed always gives the same tasks.` },
+
+{ id: "convert-task", phase: "Prepare tasks (harness-rl prepare-data, once)", shape: "Harbor task dir",
+  title: "convert_task(source, target)", loc: "tasks/harbor_layout.py:49", from: "cli.prepare_data (once per task)",
+  plain: `<p>Each selected task folder is copied into Harbor's layout under <code>data/harbor/&lt;split&gt;/</code>. A small Dockerfile is written so the starting files get baked into the shared base image. Only <code>environment/</code> becomes the Docker build context, so the solution and the hidden tests never reach the sandbox Pi works in. <code>leaked_paths</code> fails the conversion if they would.</p>`,
+  input: pre(`tasks/fix-sum-range/
+  instruction.md
+  task.toml        <span class="dim"># docker_image = "harbor-swe-base:2"</span>
+  environment/
+    workdir/mathkit/sums.py
+    setup.sh
+  tests/test_sums.py
+  solution/patch.diff`),
+  output: pre(`data/harbor/smoke/fix-sum-range/
+  instruction.md
+  task.toml        <mark># docker_image line removed</mark>
+  environment/
+    <mark>Dockerfile</mark>
+    workdir/mathkit/sums.py
+    setup.sh
+  tests/test_sums.py   <span class="dim"># outside the build context</span>
+  solution/patch.diff  <span class="dim"># outside the build context</span>`),
+  visual: pre(`<span class="dim"># environment/Dockerfile (environment_dockerfile)</span>
+FROM harbor-swe-base:2
+COPY workdir/ /workdir/
+COPY setup.sh /tmp/task-setup.sh
+RUN bash /tmp/task-setup.sh &amp;&amp; rm /tmp/task-setup.sh
+WORKDIR /workdir`),
+  note: `<b>After this:</b> <code>scripts/serve_harbor.sh</code> starts the OpenEnv Harbor server (port 8200) and its capture proxy (port 8300). Each <code>--dataset</code> folder becomes a split with the same name, so <code>split = "data/harbor/smoke"</code> in the config means exactly this folder.` },
+
+// ───────────────────────── Phase 1 ─────────────────────────
+{ id: "load-config", phase: "Start the run (harness-rl grpo)", shape: "RunConfig",
+  title: "load_run_config(path) → parse_run_config(raw)", loc: "config.py:141, :121", from: "cli.run_grpo_command (cli.py:88)",
+  plain: `<p>The TOML file is read once and turned into a frozen <code>RunConfig</code>. Anything the file leaves out comes from the defaults in <code>config.py</code>, which is the single place shared settings live. <code>lora_alpha</code> is not stored at all: it is computed as 2 × <code>lora_rank</code>.</p><p>The CLI then writes <code>environment.json</code> (Python, GPU, package versions) and <code>config.json</code> into the run folder.</p>`,
+  input: pre(`<span class="dim"># configs/smoke_sequential.toml</span>
+[run]
+name = "smoke-sequential"
+output_dir = "runs/smoke-sequential"
+strategy = "sequential"
+
+[vllm]
+gpu_memory_utilization = 0.85
+
+[harbor]
+split = "data/harbor/smoke"`),
+  output: pre(`RunConfig(
+  name=<mark>'smoke-sequential'</mark>,
+  output_dir=<mark>Path('runs/smoke-sequential')</mark>,
+  strategy=<mark>MemoryStrategy.SEQUENTIAL</mark>, seed=0,
+  model=ModelConfig(
+    base_model='Qwen/Qwen3-4B-Instruct-2507',
+    served_name='student-base', max_model_len=12288,
+    lora_rank=16),        <span class="dim"># .lora_alpha → 32</span>
+  vllm=VllmConfig(gpu_memory_utilization=<mark>0.85</mark>,
+    max_num_seqs=4, tool_call_parser='hermes', …),
+  harbor=HarborConfig(split=<mark>'data/harbor/smoke'</mark>,
+    harness='pi', sandbox='docker',
+    agent_timeout_sec=600.0, agent_step_limit=30,
+    max_concurrent_rollouts=4, …),
+  grpo=GrpoConfig(num_generations=4,
+    groups_per_step=2, max_steps=3,
+    learning_rate=1e-05, temperature=1.0,
+    epsilon_low=0.2, epsilon_high=0.28,
+    is_clip_min=0.5, is_clip_max=5.0, …))`),
+  note: `Highlighted values came from the TOML file; everything else is a default.` },
+
+{ id: "factory-builder", phase: "Start the run (harness-rl grpo)", shape: "FactoryBuilder",
+  title: "make_factory_builder(harbor, llm_url, temperature)", loc: "rollout/collect.py:58", from: "cli.run_grpo_command",
+  plain: `<p>Returns a small function, <code>build(model_name)</code>, that creates an OpenEnv <code>HarborSessionFactory</code> pointed at a given model name. The model name changes every iteration (<code>policy-v0</code>, <code>policy-v1</code>, …), so the factory is rebuilt each time rather than stored.</p><p>Sampling is pinned through OpenEnv's <code>training_sampling</code>. Only temperature is passed; OpenEnv fills every other knob with a neutral value, so the log-probs vLLM records describe the full distribution the token was drawn from.</p>`,
+  input: pre(`harbor      = HarborConfig(server_url='http://127.0.0.1:8200',
+                           split='data/harbor/smoke',
+                           harness='pi', sandbox='docker', …)
+llm_url     = 'http://127.0.0.1:8000'
+temperature = 1.0`),
+  output: pre(`build = &lt;function build(model_name)&gt;
+
+<span class="dim"># what each built factory sends as sampling:</span>
+{"temperature": 1.0,
+ <mark>"top_p": 1.0, "top_k": -1, "min_p": 0.0,
+ "frequency_penalty": 0.0, "presence_penalty": 0.0,
+ "repetition_penalty": 1.0</mark>}`),
+  note: `<b>Why it matters:</b> if top-p or top-k cut the distribution, the recorded log-probs would no longer be valid "old policy" probabilities for the GRPO ratio later.` },
+
+{ id: "prompt-rows", phase: "Start the run (harness-rl grpo)", shape: "PromptRow",
+  title: "prompt_rows(build('student-base'))", loc: "rollout/collect.py:87", from: "cli.run_grpo_command",
+  plain: `<p>Asks the Harbor server for the split's task prompts and wraps each in a frozen <code>PromptRow</code>. The prompt is the task's instruction as a single user message. Later, OpenEnv finds the task again by hashing this exact text, so the prompt has to come from the server and be sent back unchanged.</p>`,
+  input: pre(`<span class="dim"># reply from factory.prompt_rows()</span>
+[{"prompt": [{"role": "user", "content":
+   "Fix the off-by-one bug in mathkit.sums.sum_range
+    so that sum_range(a, b) includes b."}],
+  "task_name": "fix-sum-range", "task_index": 0},
+ {"prompt": [...], "task_name": "add-docstring",
+  "task_index": 1},
+ … 8 rows]`),
+  output: pre(`prompts = (
+  PromptRow(prompt=({'role': 'user', 'content': 'Fix …'},),
+            task_name='fix-sum-range', task_index=0),
+  PromptRow(…, task_name='add-docstring', task_index=1),
+  … 8 rows)`),
+  note: `These rows go into a frozen <code>PipelineContext(config, runtime, build_factory, prompts)</code> that every iteration reads but never changes.` },
+
+{ id: "runtime-start", phase: "Start the run (harness-rl grpo)", shape: "AdapterRef v0",
+  title: "make_runtime(config) → SequentialRuntime.start()", loc: "memory/strategies.py:177, :131", from: "cli.run_grpo_command → pipeline.run_grpo (pipeline.py:184)",
+  plain: `<p><code>make_runtime</code> looks up the strategy in a dict and returns a <code>SequentialRuntime</code>. Its <code>start()</code> loads the 4B model in 4-bit (NF4), attaches a fresh LoRA adapter and saves it as version 0. LoRA's B matrices start at zero, so <code>policy-v0</code> behaves exactly like the base model. Then the trainer is deleted and GPU memory is freed: in Strategy B, nothing stays on the GPU between phases.</p>`,
+  input: pre(`config.strategy = MemoryStrategy.SEQUENTIAL
+config.model    = ModelConfig(lora_rank=16, …)
+config.grpo.learning_rate = 1e-05`),
+  output: pre(`AdapterRef(version=<mark>0</mark>, name=<mark>'policy-v0'</mark>,
+  path=Path('/…/runs/smoke-sequential/adapters/policy-v0'))
+
+<span class="dim"># files written by save_policy</span>
+adapters/policy-v0/
+  adapter_config.json
+  adapter_model.safetensors   <span class="dim"># ≈130 MB, B = 0</span>
+  optimizer.pt                <span class="dim"># empty AdamW state</span>
+
+LoopState(step=0, adapter=AdapterRef(0, 'policy-v0', …),
+          probe=None, trainer_probe=None, served_probe=None)`),
+  visual: table(["Call", "What it does"], [
+    [mono("new_policy(model, lr)"), "NF4 base + LoRA (r 16, alpha 32) + AdamW over LoRA weights only"],
+    [mono("adapter_ref(output_dir, 0)"), "builds the name <code>policy-v0</code> and its folder"],
+    [mono("save_policy(trainer, ref)"), "writes adapter files + optimizer.pt"],
+    [mono("free_gpu_memory()"), "gc + empty CUDA cache, so vLLM can take the GPU next"]]),
+  note: `Every phase from here on is wrapped in <code>measured(name, action)</code> (memory/monitor.py:77). It returns the action's result plus a <code>PhaseRecord(phase, seconds, gpu_peak_mib, gpu_end_mib, ram_peak_mib)</code> for the log.` },
+
+// ───────────────────────── Phase 2 ─────────────────────────
+{ id: "to-inference", phase: "Iteration 0 · rollouts", shape: "vLLM process",
+  title: "runtime.to_inference(adapter) → launch_vllm → serve_command", loc: "memory/strategies.py:140, :58 · inference/vllm_server.py:24", from: "pipeline.iteration (pipeline.py:118)",
+  plain: `<p>Strategy B starts a brand-new vLLM process with the current adapter preloaded. <code>serve_command</code> builds the command line; <code>start_server</code> launches it with the extra environment variables that unlock adapter loading; <code>wait_until_ready</code> polls <code>/health</code> until it answers.</p>`,
+  input: pre(`adapter = AdapterRef(0, 'policy-v0', …/policy-v0)
+config.vllm.gpu_memory_utilization = 0.85`),
+  output: pre(`vllm serve Qwen/Qwen3-4B-Instruct-2507
+  --served-model-name student-base
+  --host 127.0.0.1 --port 8000
+  --max-model-len 12288
+  --gpu-memory-utilization 0.85
+  --max-num-seqs 4 --dtype bfloat16
+  --enable-auto-tool-choice --tool-call-parser hermes
+  --logprobs-mode processed_logprobs
+  --return-tokens-as-token-ids
+  --enable-lora --max-lora-rank 16 --max-loras 2
+  <mark>--lora-modules policy-v0=/…/adapters/policy-v0</mark>
+
+<span class="dim"># env: VLLM_SERVER_DEV_MODE=1</span>
+<span class="dim">#      VLLM_ALLOW_RUNTIME_LORA_UPDATING=True</span>`),
+  note: `<b>GPU now:</b> ≈ 0.9 GB desktop + ≈ 13.9 GB vLLM. No <code>--enable-sleep-mode</code>, because that flag is only for Strategy A.` },
+
+{ id: "prompts-for-step", phase: "Iteration 0 · rollouts", shape: "PromptRow",
+  title: "prompts_for_step(prompts, step=0, per_step=2)", loc: "rollout/batching.py:14", from: "pipeline.iteration",
+  plain: `<p>Picks which tasks this iteration works on: it walks the task list in order, <code>per_step</code> tasks at a time, wrapping around at the end. Step 0 takes tasks 0 and 1; step 1 would take 2 and 3; with 8 smoke tasks, step 4 wraps back to 0 and 1.</p>`,
+  input: pre(`prompts  = (PromptRow('fix-sum-range'), PromptRow('add-docstring'),
+            PromptRow(…), … 8 rows)
+step     = 0
+per_step = 2   <span class="dim"># grpo.groups_per_step</span>`),
+  output: pre(`batch = (<mark>PromptRow('fix-sum-range')</mark>,
+         <mark>PromptRow('add-docstring')</mark>)`) },
+
+{ id: "collect-groups", phase: "Iteration 0 · rollouts", shape: "jobs",
+  title: "collect_groups(build('policy-v0'), batch, 4, 4)", loc: "rollout/collect.py:142", from: "pipeline.iteration",
+  plain: `<p>Builds a factory for <code>policy-v0</code>, so Pi's model calls are served by the current adapter. Then it makes one job per attempt: 2 tasks × 4 attempts = 8 jobs, run by a thread pool 4 at a time (<code>max_concurrent_rollouts</code>). Each job calls <code>run_rollout</code>.</p>`,
+  input: pre(`factory         = build('policy-v0')
+rows            = (PromptRow('fix-sum-range'), PromptRow('add-docstring'))
+num_generations = 4
+max_workers     = 4`),
+  output: pre(`jobs = [
+  (row0, <mark>'fix-sum-range#0'</mark>, 0),
+  (row0, 'fix-sum-range#1', 1),
+  (row0, 'fix-sum-range#2', 2),
+  (row0, 'fix-sum-range#3', 3),
+  (row1, 'add-docstring#0', 0),
+  … 8 jobs ]
+<span class="dim"># → pool.map(run_rollout, jobs)</span>`),
+  note: `The third value is passed as <code>seed</code>. OpenEnv ignores it: it finds the task from the prompt text, so all four attempts run the same task.` },
+
+{ id: "black-box", phase: "Iteration 0 · rollouts", shape: "TrainingTrace",
+  title: "run_rollout(factory, row, rollout_id, seed): the black box", loc: "rollout/collect.py:113", from: "collect_groups (one thread per job)",
+  plain: `<p>This is where Pi actually works. <code>factory.create(…)</code> starts a Docker sandbox from the task's Dockerfile and runs Pi inside it. Pi talks to "the model" through OpenEnv's capture proxy, which forwards each call to vLLM (<code>policy-v0</code>) and records the exact token ids and log-probs. When Pi finishes, Harbor runs the hidden tests and returns a reward.</p><p>For attempt <code>fix-sum-range#0</code>, Pi makes two model calls: first it reads the file, then it edits it. The verifier passes, so the reward is 1.0.</p>`,
+  input: pre(`session = factory.create(
+    [{'role': 'user', 'content': 'Fix the off-by-one …'}],
+    seed=0, episode_id='fix-sum-range#0')
+status  = session.wait_for_completion()   <span class="dim"># 0 = ok</span>
+result  = session.result                   <span class="dim"># reward 1.0</span>
+trace   = session.fetch_training_trace()
+session.close()                            <span class="dim"># always, in finally</span>`),
+  output: pre(`TrainingTrace(turns=[
+  TrainingTurn(               <span class="dim"># call 1: read the file</span>
+    prompt_token_ids=[101, 102, 103, 104],
+    completion_token_ids=[201, 202, 203],
+    per_token_logps=[-0.2, -0.5, -0.1],
+    loss_mask=[<mark>0, 0, 0, 0</mark>, 1, 1, 1],
+    response={"choices": [{"message": {"tool_calls": [read]}}]}),
+  TrainingTurn(               <span class="dim"># call 2: edit it</span>
+    prompt_token_ids=[101, 102, 103, 104, 201, 202, 203, 301, 302],
+    completion_token_ids=[205, 206, 203],
+    per_token_logps=[-0.4, -1.2, -0.1],
+    loss_mask=[<mark>0, 0, 0, 0, 0, 0, 0, 0, 0</mark>, 1, 1, 1],
+    response={… tool_calls: [edit] …})])
+result.reward = 1.0`),
+  note: `<b>Note:</b> OpenEnv's <code>loss_mask</code> covers the prompt <i>and</i> the completion, and the prompt part is always 0. Call 2's prompt repeats call 1 exactly and then adds the tool result (<code>301 302</code>). That repetition is what <code>traces.py</code> uses later to join the calls.` },
+
+{ id: "turn-tokens", phase: "Iteration 0 · rollouts", shape: "TurnTokens",
+  title: "turn_tokens(turn)", loc: "rollout/collect.py:95", from: "run_rollout (once per captured call)",
+  plain: `<p>Converts one captured OpenEnv call into our own frozen <code>TurnTokens</code>. The only real work is cutting the loss mask at the prompt boundary: the prompt part is thrown away (it is all zeros), and the completion part becomes <code>completion_mask</code>.</p>`,
+  input: pre(`TrainingTurn(
+  prompt_token_ids=[101, 102, 103, 104],
+  completion_token_ids=[201, 202, 203],
+  per_token_logps=[-0.2, -0.5, -0.1],
+  loss_mask=[0, 0, 0, 0, <mark>1, 1, 1</mark>])`),
+  output: pre(`TurnTokens(
+  prompt_ids=(101, 102, 103, 104),
+  completion_ids=(201, 202, 203),
+  completion_logps=(-0.2, -0.5, -0.1),
+  completion_mask=<mark>(1, 1, 1)</mark>)   <span class="dim"># loss_mask[4:]</span>`),
+  visual: `<p class="cap">Call 1's loss mask, cut at <code>n_prompt = len(prompt_token_ids) = 4</code>:</p>` +
+    strip([...T1P.map((id, i) => tok(id, { i, m: 0 })), ...T1C.map((id, k) => tok(id, { i: k + 4, m: 1, lp: T1L[k], cls: k === 0 ? "sep" : "" }))]) +
+    legend(["m1", "ctx", "sep"]) },
+
+{ id: "rollout-result", phase: "Iteration 0 · rollouts", shape: "RolloutResult",
+  title: "count_tool_calls(response) + correctness_reward(reward) → RolloutResult", loc: "rollout/collect.py:106 · rollout/rewards.py:10", from: "run_rollout",
+  plain: `<p>Each attempt ends as one frozen <code>RolloutResult</code>: its turns, the verifier's reward, how many tool calls Pi made, and how long it took. If anything goes wrong (the sandbox fails, Pi times out, the verifier never runs), the attempt keeps <code>reward=None</code> and no turns. That means "unscored", which is different from "failed" (0.0).</p>`,
+  input: pre(`result.reward = 1.0
+trace.turns   = [turn 1, turn 2]
+responses     = 1 tool call each`),
+  output: pre(`RolloutResult(
+  rollout_id='fix-sum-range#0',
+  task_name='fix-sum-range',
+  reward=<mark>1.0</mark>,
+  turns=(TurnTokens(…call 1…), TurnTokens(…call 2…)),
+  tool_calls=<mark>2</mark>,
+  seconds=212.4,
+  error=None)`),
+  visual: `<p class="cap">All 8 attempts this iteration:</p>` + table(["rollout_id", "reward", "turns", "tool calls", "what happened"], [
+    [mono("fix-sum-range#0"), num("1.0"), num(2), num(2), "read, then edited correctly"],
+    [mono("fix-sum-range#1"), num("0.0"), num(1), num(1), "edited without reading; wrote <code>b-1</code>; tests fail"],
+    [mono("fix-sum-range#2"), num("1.0"), num(2), num(2), "correct, but Pi compacted its history between calls"],
+    [mono("fix-sum-range#3"), num("None"), num(0), num(0), "<span class='pill no'>error</span> rollout failed (status=1)"],
+    [mono("add-docstring#0–3"), num("0.0"), num(3), num(3), "all four fail the tests"]]) },
+
+{ id: "rollout-group", phase: "Iteration 0 · rollouts", shape: "RolloutGroup",
+  title: "RolloutGroup(task_name, results)", loc: "rollout/collect.py:42", from: "end of collect_groups",
+  plain: `<p>The 8 results are put back together by task: one <code>RolloutGroup</code> per task, holding its 4 attempts. GRPO only ever compares attempts within the same group, because they all answered the same task with the same policy.</p>`,
+  input: pre(`results = [8 × RolloutResult, in job order]`),
+  output: pre(`groups = (
+  RolloutGroup('fix-sum-range', results=(#0, #1, #2, #3)),
+      <span class="dim"># .rewards →</span> <mark>(1.0, 0.0, 1.0, None)</mark>
+  RolloutGroup('add-docstring', results=(#0, #1, #2, #3)),
+      <span class="dim"># .rewards →</span> <mark>(0.0, 0.0, 0.0, 0.0)</mark>
+)`) },
+
+{ id: "probe", phase: "Iteration 0 · rollouts", shape: "probe TokenSequence",
+  title: "probe_from_groups(groups)", loc: "rollout/batching.py:36", from: "pipeline.iteration (only while state.probe is None)",
+  plain: `<p>Freezes one fixed token sequence, the first captured call of the run, as a "probe". After every update, both the trainer and vLLM score this same sequence. If they agree, vLLM is really serving the weights that were just trained. It is taken once and reused for the whole run.</p>`,
+  input: pre(`groups[0].results[0].turns[0] =
+  TurnTokens(prompt_ids=(101, 102, 103, 104),
+             completion_ids=(201, 202, 203), …)`),
+  output: pre(`probe = TokenSequence(
+  input_ids=(101, 102, 103, 104, 201, 202, 203),  <span class="dim"># [:512]</span>
+  old_logps=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+  loss_mask=(<mark>0</mark>, 1, 1, 1, 1, 1, 1))`),
+  note: `Every position except the first is scored, because nothing comes before token 0 to predict it. vLLM's <code>prompt_logprobs</code> covers exactly the same positions.` },
+
+{ id: "served-logps", phase: "Iteration 0 · rollouts", shape: "served probe",
+  title: "served_logps(config, adapter, probe) → prompt_logprobs(…)", loc: "pipeline.py:107 · inference/vllm_server.py:182, :166", from: "pipeline.iteration",
+  plain: `<p>Asks vLLM to score the probe under the current adapter name, without generating anything new (teacher-forced, <code>max_tokens: 1</code>). <code>parse_prompt_logprobs</code> skips entry 0 and picks out, for each later position, the log-prob of the token that is actually there.</p><p>At step 0 there is nothing to compare with yet, so the result is just stored as <code>served_probe</code>. From step 1 on it feeds <code>sync_check</code>.</p>`,
+  input: pre(`POST /v1/completions
+{"model": "policy-v0",
+ "prompt": [101, 102, 103, 104, 201, 202, 203],
+ "max_tokens": 1, "temperature": 1.0,
+ "prompt_logprobs": 0}
+
+<span class="dim"># reply.choices[0].prompt_logprobs</span>
+[null,
+ {"token_id:102": {"logprob": -2.31}},
+ {"token_id:103": {"logprob": -4.10}},
+ …]`),
+  output: pre(`served = (-2.31, -4.10, -0.85, <mark>-0.20, -0.50, -0.10</mark>)
+<span class="dim">#         tokens 102  103   104    201    202    203</span>
+
+LoopState(step=<mark>1</mark>, adapter=policy-v0,
+          probe=TokenSequence(…), served_probe=<mark>served</mark>)`),
+  note: `The last three numbers equal the sampling log-probs recorded during the rollout, because it is the same model (<code>policy-v0</code>) scoring the same tokens.` },
+
+{ id: "rollout-summary", phase: "Iteration 0 · rollouts", shape: "log record",
+  title: "rollout_summary(groups)", loc: "rollout/batching.py:55", from: "pipeline.iteration",
+  plain: `<p>Reduces the rollouts to numbers for the log: how many ran, failed or went unscored, the mean reward over scored attempts, and how many groups can teach the model anything. Token ids are left out because they are too large to log.</p>`,
+  input: pre(`groups = (fix-sum-range: 1.0, 0.0, 1.0, None
+          add-docstring: 0.0, 0.0, 0.0, 0.0)`),
+  output: pre(`{"rollouts": 8, "errors": 1, "unscored": 1,
+ "mean_reward": <mark>0.286</mark>,        <span class="dim"># 2 passes / 7 scored</span>
+ "groups_with_signal": <mark>1</mark>, "groups": 2,
+ "mean_tool_calls": 2.125,
+ "per_rollout": [ … 8 entries, "turns": 2 … ]}`) },
+
+// ───────────────────────── Phase 3 ─────────────────────────
+{ id: "learning-signal", phase: "Iteration 0 · rollouts → training rows", shape: "kept groups",
+  title: "has_learning_signal(rewards)", loc: "rollout/rewards.py:31", from: "batching.training_rows (batching.py:22)",
+  plain: `<p>A group can only teach the model something if its attempts got different rewards. If every scored attempt passed, or every one failed, all advantages would be zero and the group adds no gradient, so it is skipped.</p>`,
+  input: pre(`fix-sum-range: (1.0, 0.0, 1.0, None)
+add-docstring: (0.0, 0.0, 0.0, 0.0)`),
+  output: pre(`fix-sum-range → {1.0, 0.0}  → <mark>True</mark>   <span class="dim"># kept</span>
+add-docstring → {0.0}       → <span class="bad">False</span>  <span class="dim"># dropped</span>`),
+  note: `<code>None</code> rewards are ignored when counting distinct values.` },
+
+{ id: "advantages", phase: "Iteration 0 · rollouts → training rows", shape: "advantages",
+  title: "group_advantages(rewards)", loc: "rollout/rewards.py:18", from: "batching.training_rows",
+  plain: `<p>Turns rewards into advantages: how much better or worse each attempt did than its group's average, in units of the group's spread. Unscored attempts get <code>None</code> and are left out of the mean and the spread.</p>`,
+  input: pre(`rewards = (1.0, 0.0, 1.0, None)`),
+  output: pre(`advantages = (<mark>+0.707</mark>, <mark>-1.414</mark>, <mark>+0.707</mark>, None)`),
+  visual: table(["", "value"], [
+    ["scored rewards", mono("1.0, 0.0, 1.0")],
+    ["mean", mono("(1 + 0 + 1) / 3 = 0.667")],
+    ["population std (pstdev)", mono("√(((0.333)² + (0.667)² + (0.333)²) / 3) = 0.471")],
+    ["#0 and #2 (passed)", mono("(1.0 − 0.667) / (0.471 + 1e-8) = +0.707")],
+    ["#1 (failed)", mono("(0.0 − 0.667) / (0.471 + 1e-8) = −1.414")],
+    ["#3 (unscored)", mono("None → no training rows")]]),
+  note: `Same rule as TRL's async GRPO: population standard deviation, epsilon 1e-8.` },
+
+{ id: "training-rows", phase: "Iteration 0 · rollouts → training rows", shape: "TrainingRow",
+  title: "training_rows(groups)", loc: "rollout/batching.py:22", from: "pipeline.iteration",
+  plain: `<p>Loops over the kept groups and pairs every attempt with its advantage. Attempts with advantage <code>None</code> are skipped. Each remaining attempt goes to <code>rows_for_rollout</code>, which turns its separate model calls into training sequences. The next five steps zoom into that.</p>`,
+  input: pre(`group 'fix-sum-range' (kept), advantages (+0.707, -1.414, +0.707, None)
+group 'add-docstring' (dropped)`),
+  output: pre(`rows_for_rollout(#0.turns, +0.707, 'fix-sum-range#0')
+rows_for_rollout(#1.turns, -1.414, 'fix-sum-range#1')
+rows_for_rollout(#2.turns, +0.707, 'fix-sum-range#2')
+<span class="dim"># #3 skipped (advantage None)</span>`) },
+
+{ id: "validate-turn", phase: "Iteration 0 · rollouts → training rows", shape: "TurnTokens",
+  title: "merge_turns(turns) → validate_turn(turn)", loc: "rollout/traces.py:95, :50", from: "rows_for_rollout (traces.py:113)",
+  plain: `<p><code>merge_turns</code> walks the calls of one attempt in order. Before using a call it checks that its completion arrays line up: one log-prob and one mask value per completion token. A misaligned call would silently train the wrong tokens, so it stops with an error instead.</p>`,
+  input: pre(`TurnTokens(completion_ids=(201, 202, 203),
+           completion_logps=(-0.2, -0.5, -0.1),
+           completion_mask=(1, 1, 1))`),
+  output: pre(`<span class="dim"># lengths {3, 3, 3} → one value → OK</span>
+TurnTokens(…unchanged…)
+
+<span class="dim"># a broken capture would raise:</span>
+<span class="bad">MalformedTurnError: completion arrays differ in length: {2, 3}</span>`) },
+
+{ id: "sequence-from-turn", phase: "Iteration 0 · rollouts → training rows", shape: "TokenSequence",
+  title: "sequence_from_turn(turn)", loc: "rollout/traces.py:66", from: "merge_turns (first call, or a call that continues nothing)",
+  plain: `<p>Starts a new training sequence from a call: prompt tokens followed by completion tokens, all in one list. The prompt gets log-prob 0.0 and mask 0 (context); the completion keeps its sampled log-probs and mask. From now on, three equally long lists describe every position.</p>`,
+  input: pre(`TurnTokens(prompt_ids=(101, 102, 103, 104),
+           completion_ids=(201, 202, 203),
+           completion_logps=(-0.2, -0.5, -0.1),
+           completion_mask=(1, 1, 1))`),
+  output: pre(`TokenSequence(
+  input_ids=(101, 102, 103, 104, 201, 202, 203),
+  old_logps=(<mark>0.0, 0.0, 0.0, 0.0</mark>, -0.2, -0.5, -0.1),
+  loss_mask=(<mark>0, 0, 0, 0</mark>, 1, 1, 1))`),
+  visual: strip([...T1P.map((id, i) => tok(id, { i, m: 0, lp: 0 })), ...T1C.map((id, k) => tok(id, { i: k + 4, m: 1, lp: T1L[k] }))]) + legend(["m1", "ctx"]) },
+
+{ id: "extends", phase: "Iteration 0 · rollouts → training rows", shape: "bool",
+  title: "extends(sequence, turn)", loc: "rollout/traces.py:76", from: "merge_turns (for every later call)",
+  plain: `<p>Asks: does this call's prompt start with the whole sequence built so far? For a normal agent loop it does, because each call re-sends the conversation so far and adds the newest tool result. If so, the call can be added to the same sequence instead of starting a new one.</p>`,
+  input: pre(`sequence.input_ids  = (101, 102, 103, 104, 201, 202, 203)
+turn2.prompt_ids    = (101, 102, 103, 104, 201, 202, 203, 301, 302)`),
+  output: pre(`turn2.prompt_ids[:7] == sequence.input_ids
+→ <mark>True</mark>`),
+  visual: `<p class="cap">Sequence so far (top) against call 2's prompt (bottom):</p>` +
+    strip(SEQ.slice(0, 7).map((id, i) => tok(id, { i, m: SEQ_M[i] }))) +
+    strip(T2P.map((id, i) => tok(id, { i, cls: i >= 7 ? "gap" : "" }))) + legend(["m1", "gap"]) },
+
+{ id: "append-turn", phase: "Iteration 0 · rollouts → training rows", shape: "TokenSequence",
+  title: "append_turn(sequence, turn)", loc: "rollout/traces.py:82", from: "merge_turns",
+  plain: `<p>Extends the sequence with the next call. The "gap" is whatever the new prompt adds after the existing sequence, here the tool result (<code>301 302</code>). It is context, so it gets mask 0. Then the new completion is added with its log-probs and mask. One forward pass over this sequence now covers both calls.</p>`,
+  input: pre(`sequence = TokenSequence(7 tokens, as above)
+turn2    = TurnTokens(prompt_ids=(…7 tokens…, 301, 302),
+                      completion_ids=(205, 206, 203),
+                      completion_logps=(-0.4, -1.2, -0.1),
+                      completion_mask=(1, 1, 1))`),
+  output: pre(`TokenSequence(
+  input_ids=(101, 102, 103, 104, 201, 202, 203, <mark>301, 302</mark>, <mark>205, 206, 203</mark>),
+  old_logps=(0, 0, 0, 0, -0.2, -0.5, -0.1, <mark>0, 0</mark>, <mark>-0.4, -1.2, -0.1</mark>),
+  loss_mask=(0, 0, 0, 0, 1, 1, 1, <mark>0, 0</mark>, <mark>1, 1, 1</mark>))
+<span class="dim"># n_trained = 6</span>`),
+  visual: strip(SEQ.map((id, i) => tok(id, { i, m: SEQ_M[i], lp: SEQ_L[i], cls: i === 7 || i === 8 ? "gap newt" : i >= 9 ? "newt" : "" }))) +
+    legend(["m1", "ctx", "gap", "newt"]) },
+
+{ id: "fork", phase: "Iteration 0 · rollouts → training rows", shape: "TokenSequence ×2",
+  title: "merge_turns(turns): when history is rewritten", loc: "rollout/traces.py:95", from: "rows_for_rollout for fix-sum-range#2",
+  plain: `<p>Attempt #2 shows the case that makes <code>traces.py</code> look complicated. Between its calls, Pi compacted its history: call 2's prompt replaces the earlier turns with a summary token (<code>309</code>). That prompt no longer starts with the sequence built so far, so <code>extends</code> is False and <code>sequence_from_turn</code> starts a second sequence.</p><p>Both sequences keep their own trained tokens and later carry the same advantage. At the end, any sequence with no trained token is dropped.</p>`,
+  input: pre(`turn1 = TurnTokens(prompt_ids=(101, 102, 103, 104),
+                   completion_ids=(201, 202, 203), …)
+turn2 = TurnTokens(prompt_ids=(101, 102, 103, 104, <mark>309</mark>, 302),
+                   completion_ids=(205, 206, 203), …)`),
+  output: pre(`(TokenSequence(input_ids=(101, 102, 103, 104, 201, 202, 203),
+               loss_mask=(0, 0, 0, 0, 1, 1, 1)),
+ <mark>TokenSequence(input_ids=(101, 102, 103, 104, 309, 302, 205, 206, 203),
+               loss_mask=(0, 0, 0, 0, 0, 0, 1, 1, 1))</mark>)`),
+  visual: `<p class="cap">Second sequence, started fresh because the prompt broke the prefix:</p>` +
+    strip([101, 102, 103, 104, 309, 302, 205, 206, 203].map((id, i) => tok(id, { i, m: i >= 6 ? 1 : 0, cls: i === 4 ? "drop" : "" }))) +
+    legend(["m1", "ctx", "drop"]).replace("dropped from the loss", "breaks the prefix (309 replaced the earlier turns)") },
+
+{ id: "rows", phase: "Iteration 0 · rollouts → training rows", shape: "TrainingRow",
+  title: "rows_for_rollout(…) → TrainingRow(sequence, advantage, rollout_id)", loc: "rollout/traces.py:113, :38", from: "batching.training_rows",
+  plain: `<p>Every sequence becomes a <code>TrainingRow</code> carrying its attempt's advantage. This is the batch for the update: 4 rows, 16 trained tokens in total. Notice that the failed attempt (#1) is in the batch too, with a negative advantage: the model is pushed away from what it did.</p>`,
+  input: pre(`#0 → 1 sequence, advantage +0.707
+#1 → 1 sequence, advantage -1.414
+#2 → 2 sequences, advantage +0.707`),
+  output: pre(`rows = (
+  TrainingRow(sequence=<span class="dim">12 tokens, 6 trained</span>, advantage=+0.707, rollout_id='fix-sum-range#0'),
+  TrainingRow(sequence=<span class="dim"> 8 tokens, 4 trained</span>, advantage=<mark>-1.414</mark>, rollout_id='fix-sum-range#1'),
+  TrainingRow(sequence=<span class="dim"> 7 tokens, 3 trained</span>, advantage=+0.707, rollout_id='fix-sum-range#2'),
+  TrainingRow(sequence=<span class="dim"> 9 tokens, 3 trained</span>, advantage=+0.707, rollout_id='fix-sum-range#2'))
+<span class="dim"># total trained tokens = 6 + 4 + 3 + 3 = 16</span>`),
+  note: `If <code>rows</code> were empty (every group all-pass or all-fail), <code>iteration</code> would stop here, log the step, and keep the same adapter: no update, no hand-over.` },
+
+// ───────────────────────── Phase 4 ─────────────────────────
+{ id: "to-training", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "PolicyTrainer",
+  title: "runtime.to_training(adapter) → restore_policy(model, adapter, lr)", loc: "memory/strategies.py:152 · training/qlora.py:67", from: "pipeline.training_phase (pipeline.py:85)",
+  plain: `<p>Strategy B hands the GPU over completely. First it stops the vLLM process. Then it rebuilds the trainer from disk: the NF4 base model, the adapter the rollouts were sampled with (<code>policy-v0</code>), and that adapter's saved optimizer state. The trainer is now at exactly the version vLLM just used.</p>`,
+  input: pre(`adapter = AdapterRef(0, 'policy-v0', …/policy-v0)
+<span class="dim"># GPU: desktop 0.9 GB + vLLM 13.9 GB</span>`),
+  output: pre(`PolicyTrainer(
+  model=PeftModel(NF4 Qwen3-4B + LoRA policy-v0, trainable),
+  optimizer=AdamW(LoRA params only, lr=1e-05,
+                  state from policy-v0/optimizer.pt))
+<span class="dim"># GPU: desktop 0.9 GB + trainer ≈ 3.8 GB (peaks ≈ 9 GB in the step)</span>`),
+  note: `<b>Consequence:</b> because the trainer is at the same version that sampled the tokens, the ratios in the loss differ from 1 only through number-format differences (vLLM computes in BF16, the trainer's base is NF4).` },
+
+{ id: "train-step", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "setup",
+  title: "train_step(trainer, rows, grpo): setup", loc: "training/step.py:74", from: "pipeline.training_phase",
+  plain: `<p>Gets ready for one optimizer step. Rows longer than <code>max_train_tokens</code> are skipped, the step's total number of trained tokens is counted (every row's loss is divided by it later), and the LoRA weight norm is recorded so the end of the step can prove the weights moved.</p>`,
+  input: pre(`rows = (4 TrainingRows)
+grpo.max_train_tokens = 12288`),
+  output: pre(`usable       = 4 rows   <span class="dim"># all ≤ 12288 tokens</span>
+total_tokens = <mark>16</mark>
+norm_before  = lora_norm(model) = <mark>41.203</mark>`),
+  note: `At v0 the LoRA B matrices are zero, so this norm comes from the A matrices only. It changes as soon as the first step updates anything.` },
+
+{ id: "positions", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "positions",
+  title: "sequence_logps(trainer, sequence, grpo) → trained_positions(loss_mask)", loc: "training/step.py:42 · training/logprobs.py:56", from: "train_step (once per row)",
+  plain: `<p>One forward pass over the whole row gives a hidden state at every position. A causal model's state at position <i>p−1</i> predicts the token at position <i>p</i>. So the code finds the trained positions (mask 1, never position 0) and takes the hidden states one position earlier.</p>`,
+  input: pre(`sequence.input_ids = (101, 102, 103, 104, 201, 202, 203, 301, 302, 205, 206, 203)
+sequence.loss_mask = (  0,   0,   0,   0,   1,   1,   1,   0,   0,   1,   1,   1)`),
+  output: pre(`positions          = (<mark>4, 5, 6, 9, 10, 11</mark>)
+hidden[positions-1] = states at (3, 4, 5, 8, 9, 10)
+targets            = input_ids[positions] = (201, 202, 203, 205, 206, 203)
+old_logps          = old_logps[positions] = (-0.2, -0.5, -0.1, -0.4, -1.2, -0.1)`),
+  visual: strip(SEQ.map((id, i) => tok(id, { i, m: SEQ_M[i] }))) +
+    `<p class="cap">Filled cells are the 6 positions whose log-probs enter the loss. The state at #3 (⟨tools⟩) predicts #4 (⟨call⟩); the state at #8 (range(a,b)) predicts #9 (edit).</p>` },
+
+{ id: "logprobs", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "new_logps",
+  title: "selected_token_logps(hidden, lm_head, targets, temperature, chunk)", loc: "training/logprobs.py:23", from: "sequence_logps",
+  plain: `<p>Computes the trainer's log-probability for each target token. The vocabulary has ≈151k entries, so full logits for a long trace would not fit in memory. Instead logits are computed in chunks of 1,024 positions, only at trained positions, and recomputed during backward instead of being stored. Dividing by the same temperature vLLM used keeps the two comparable.</p>`,
+  input: pre(`hidden      : [6, 2560]   <span class="dim"># one row per trained position</span>
+lm_head     : [151936, 2560]
+targets     : (201, 202, 203, 205, 206, 203)
+temperature : 1.0, chunk_size: 1024`),
+  output: pre(`new_logps = (-0.21, -0.48, -0.10, -0.42, -1.15, -0.10)
+old_logps = (-0.20, -0.50, -0.10, -0.40, -1.20, -0.10)  <span class="dim"># from vLLM</span>`),
+  note: `Real traces have thousands of trained positions; with 6 the chunking does nothing, but the result is identical either way (tested in <code>test_losses.py</code>).` },
+
+{ id: "loss-a0", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "LossTerms",
+  title: "grpo_loss_sum(new_logps, old_logps, advantage, clip): row #0", loc: "training/grpo_loss.py:36", from: "train_step",
+  plain: `<p>For each trained token: <b>ratio</b> = e<sup>new − old</sup>, how much more (or less) likely the trainer now finds the token than vLLM did when sampling it. Tokens with a ratio outside [0.5, 5] are dropped as unreliable. Otherwise the token's loss is −min(ratio × A, clip(ratio, 0.8, 1.28) × A). With a positive advantage, lowering the loss makes these tokens more likely.</p>`,
+  input: pre(`advantage = +0.707
+clip      = ClipConfig(epsilon_low=0.2, epsilon_high=0.28,
+                       is_clip_min=0.5, is_clip_max=5.0)`),
+  output: pre(`LossTerms(loss_sum=<mark>-4.272</mark>, n_tokens=6,
+          ratio_sum=6.042, clipped=0, is_masked=0,
+          abs_logp_diff_sum=0.10)`),
+  visual: table(["token", "old", "new", "ratio", "in [0.5, 5]?", "clipped to [0.8, 1.28]", "loss = −ratio × 0.707"], [
+    [mono("⟨call⟩ 201"), num("-0.20"), num("-0.21"), num("0.990"), "yes", "no", num("-0.700")],
+    [mono("read 202"), num("-0.50"), num("-0.48"), num("1.020"), "yes", "no", num("-0.721")],
+    [mono("⟨/call⟩ 203"), num("-0.10"), num("-0.10"), num("1.000"), "yes", "no", num("-0.707")],
+    [mono("edit 205"), num("-0.40"), num("-0.42"), num("0.980"), "yes", "no", num("-0.693")],
+    [mono("b+1 206"), num("-1.20"), num("-1.15"), num("1.051"), "yes", "no", num("-0.743")],
+    [mono("⟨/call⟩ 203"), num("-0.10"), num("-0.10"), num("1.000"), "yes", "no", num("-0.707")],
+    [{ c: "", v: "<b>sum</b>" }, "", "", num("6.042"), "", "", num("<b>-4.272</b>")]]) },
+
+{ id: "loss-a1", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "LossTerms",
+  title: "grpo_loss_sum(…): row #1, negative advantage", loc: "training/grpo_loss.py:36", from: "train_step",
+  plain: `<p>The failed attempt shows the two safety rules at work. <code>b-1</code> (the wrong fix) has a ratio of 6.05: the two engines disagree too much on it, so it is masked out of the loss completely. <code>edit</code> has a ratio of 0.70, below 0.8, so with a negative advantage the clipped value 0.8 is the one used: the loss stops rewarding further moves in the same direction.</p>`,
+  input: pre(`advantage = -1.414
+sequence  = (101, 102, 103, 104, 201, 205, 208, 203)
+loss_mask = (  0,   0,   0,   0,   1,   1,   1,   1)`),
+  output: pre(`LossTerms(loss_sum=<mark>+3.960</mark>, n_tokens=4,
+          ratio_sum=8.747, clipped=<mark>2</mark>, is_masked=<mark>1</mark>,
+          abs_logp_diff_sum=2.16)`),
+  visual: table(["token", "old", "new", "ratio", "in [0.5, 5]?", "min(ratio·A, clip·A)", "loss"], [
+    [mono("⟨call⟩ 201"), num("-0.30"), num("-0.30"), num("1.000"), "yes", num("-1.414"), num("+1.414")],
+    [mono("edit 205"), num("-0.90"), num("-1.26"), num("0.698"), "yes", num("0.8 × −1.414 = −1.131"), num("+1.131")],
+    [mono("b-1 208"), num("-3.00"), num("-1.20"), num("6.050"), "<span class='pill no'>no → masked</span>", "—", num("0")],
+    [mono("⟨/call⟩ 203"), num("-0.10"), num("-0.10"), num("1.000"), "yes", num("-1.414"), num("+1.414")],
+    [{ c: "", v: "<b>sum</b>" }, "", "", num("8.747"), "", "", num("<b>+3.960</b>")]], ["", "", "drop", ""]),
+  note: `<code>clipped</code> counts tokens whose clipped ratio differs from the raw one, so the masked token counts too (2). Rows #2a and #2b work the same way as row #0: ratios ≈ 1, loss ≈ −2.121 each.` },
+
+{ id: "optimizer", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "StepMetrics",
+  title: "backward → clip_grad_norm_ → optimizer.step() → StepMetrics", loc: "training/step.py:74, :62", from: "train_step",
+  plain: `<p>Each row's summed loss is divided by the step's 16 trained tokens and back-propagated right away, so only one row's activations are in memory at a time. After all rows, the gradient norm is clipped to 1.0 and AdamW takes one step on the LoRA weights. The new LoRA norm differs from the old one: that is the proof the policy changed.</p>`,
+  input: pre(`loss sums: -4.272 (#0), +3.960 (#1), -2.121 (#2a), -2.121 (#2b)
+total_tokens = 16`),
+  output: pre(`StepMetrics(
+  rows=4, rows_skipped_too_long=0, trained_tokens=16,
+  loss=<mark>-0.285</mark>,              <span class="dim"># -4.555 / 16</span>
+  mean_ratio=1.299, clip_fraction=0.125,
+  is_masked_fraction=0.0625, mean_abs_logp_diff=0.1425,
+  grad_norm=0.84,
+  lora_norm_before=41.203, lora_norm_after=<mark>41.219</mark>,
+  seconds=96.4, torch_peak_alloc_mib=8890)`) },
+
+{ id: "probe-logps", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "trainer probe",
+  title: "probe_logps(trainer, probe, grpo)", loc: "training/step.py:113", from: "pipeline.training_phase",
+  plain: `<p>Right after the update, the trainer scores the frozen probe. These numbers are what vLLM should reproduce once it serves the new adapter.</p>`,
+  input: pre(`probe = TokenSequence((101, 102, 103, 104, 201, 202, 203),
+                      loss_mask=(0, 1, 1, 1, 1, 1, 1))`),
+  output: pre(`trainer_probe = (-2.30, -4.12, -0.84, <mark>-0.17, -0.46, -0.09</mark>)
+<span class="dim"># v0 had                  -0.20  -0.50  -0.10  for the sampled tokens</span>`),
+  note: `The sampled tokens got slightly more likely: attempt #0 passed, so its tokens had a positive advantage.` },
+
+{ id: "save-policy", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "AdapterRef v1",
+  title: "adapter_ref(output_dir, 1) → save_policy(trainer, ref)", loc: "adapters.py:16 · training/qlora.py:87", from: "pipeline.training_phase",
+  plain: `<p>The updated adapter is saved under a new name, <code>policy-v1</code>, together with its optimizer state. Every update gets a fresh name, so vLLM can never serve half of an old adapter and half of a new one.</p>`,
+  input: pre(`state.adapter.version = 0 → next version 1`),
+  output: pre(`AdapterRef(version=<mark>1</mark>, name=<mark>'policy-v1'</mark>,
+           path=…/adapters/policy-v1)
+
+adapters/
+  policy-v0/   adapter_config.json, adapter_model.safetensors, optimizer.pt
+  <mark>policy-v1/</mark>   adapter_config.json, adapter_model.safetensors, optimizer.pt`) },
+
+{ id: "release", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "free GPU",
+  title: "runtime.release_training()", loc: "memory/strategies.py:159", from: "pipeline.training_phase",
+  plain: `<p>Drops the runtime's reference to the trainer and frees GPU memory, so the next vLLM process can take it. In Strategy B the model and optimizer will be rebuilt from <code>policy-v1/</code> at the next training phase.</p>`,
+  input: pre(`self._trainer = PolicyTrainer(…)`),
+  output: pre(`self._trainer = <mark>None</mark>
+free_gpu_memory()   <span class="dim"># gc + empty CUDA cache</span>
+<span class="dim"># GPU: desktop 0.9 GB only</span>`) },
+
+{ id: "log-record", phase: "Iteration 0 · training (Strategy B hand-over)", shape: "metrics.jsonl",
+  title: "iteration returns → sink(record)", loc: "pipeline.py:118 · :163", from: "pipeline.run_grpo",
+  plain: `<p><code>iteration</code> returns a new <code>LoopState</code> and one record. <code>jsonl_sink</code> appends the record as one line to <code>runs/smoke-sequential/metrics.jsonl</code>. Day 1's strategy comparison and the docs' estimates are built from these lines.</p>`,
+  input: pre(`LoopState(step=1, adapter=policy-v0, probe=…, served_probe=(v0 values))`),
+  output: pre(`<span class="dim"># new state carried into iteration 1</span>
+LoopState(step=1, adapter=<mark>policy-v1</mark>, probe=…,
+          trainer_probe=<mark>(-2.30, -4.12, -0.84, -0.17, -0.46, -0.09)</mark>,
+          served_probe=(-2.31, -4.10, -0.85, -0.20, -0.50, -0.10))
+
+<span class="dim"># one line in metrics.jsonl</span>
+{"step": 0, "adapter": "policy-v0", "sync": null,
+ "rollouts": {"rollouts": 8, "mean_reward": 0.286, …},
+ "train": {"loss": -0.285, "lora_norm_after": 41.219, …},
+ "phases": [{"phase": "to_inference", "seconds": 92.4, …},
+            {"phase": "rollouts", "seconds": 431.6, "gpu_peak_mib": 15210, …},
+            {"phase": "to_training", …}, {"phase": "train_step", …},
+            {"phase": "save_adapter", …}, {"phase": "release_training", …}]}`) },
+
+// ───────────────────────── Phase 5 ─────────────────────────
+{ id: "next-inference", phase: "Iteration 1 · closing the loop", shape: "vLLM process",
+  title: "iteration 1: to_inference(policy-v1), build('policy-v1')", loc: "memory/strategies.py:140 · pipeline.py:118", from: "pipeline.run_grpo (loop)",
+  plain: `<p>The next iteration starts the same way, but with the new adapter. A fresh vLLM process starts with <code>policy-v1</code> preloaded, and the factory is built for that name, so every model call Pi makes from now on is answered by the updated policy. <code>prompts_for_step</code> moves on to tasks 2 and 3.</p>`,
+  input: pre(`state.adapter = AdapterRef(1, 'policy-v1', …)
+state.step    = 1`),
+  output: pre(`vllm serve … <mark>--lora-modules policy-v1=/…/adapters/policy-v1</mark>
+factory = build(<mark>'policy-v1'</mark>)
+batch   = prompts_for_step(prompts, 1, 2) = (task 2, task 3)`) },
+
+{ id: "sync-check", phase: "Iteration 1 · closing the loop", shape: "SyncCheck",
+  title: "served_logps(policy-v1) → sync_check(state, served, base_url)", loc: "pipeline.py:107, :75", from: "pipeline.iteration (step > 0)",
+  plain: `<p>vLLM scores the same probe under <code>policy-v1</code>. Two comparisons answer two questions. Does vLLM agree with the trainer that produced v1? (Should be near 0; only number formats differ.) Did vLLM's output change since v0? (Must be above 0, or the update never reached vLLM.) It also checks that <code>policy-v1</code> appears in <code>/v1/models</code>.</p>`,
+  input: pre(`served (v1)   = (-2.304, -4.117, -0.843, -0.171, -0.468, -0.094)
+trainer_probe = (-2.30,  -4.12,  -0.84,  -0.17,  -0.46,  -0.09)
+served_probe  = (-2.31,  -4.10,  -0.85,  -0.20,  -0.50,  -0.10)  <span class="dim"># v0</span>`),
+  output: pre(`SyncCheck(
+  adapter='policy-v1',
+  adapter_listed=<mark>True</mark>,
+  served_vs_trainer=<mark>0.004</mark>,   <span class="dim"># mean |served − trainer|: small = in sync</span>
+  served_change=<mark>0.016</mark>)       <span class="dim"># mean |served − v0|: > 0 = update reached vLLM</span>`) },
+
+{ id: "finish", phase: "Iteration 1 · closing the loop", shape: "final adapter",
+  title: "after max_steps: final_sync → runtime.close()", loc: "pipeline.py:174, :184 · memory/strategies.py:164", from: "pipeline.run_grpo",
+  plain: `<p>The loop repeats until <code>max_steps</code> (3 in the smoke config). The last update has not been served yet, so <code>final_sync</code> starts vLLM once more with the final adapter and logs one more <code>SyncCheck</code>. Finally, <code>runtime.close()</code> stops vLLM, even if something failed, and the CLI prints the final adapter's path.</p>`,
+  input: pre(`state after step 2: adapter = policy-v3 (if every step trained)`),
+  output: pre(`{"step": 3, "event": "final_sync", "sync": {"adapter": "policy-v3", …}}
+
+final adapter: /…/runs/smoke-sequential/adapters/<mark>policy-v3</mark>`),
+  note: `A step with no trainable groups does not create a new version, so the final number can be lower than <code>max_steps</code>.` },
+];
+
+const NAV = { "read-manifest": "read_manifest", "runtime-start": "runtime.start", "to-inference": "to_inference",
+  "black-box": "run_rollout (Pi)", "rollout-result": "RolloutResult", "rollout-group": "RolloutGroup",
+  "validate-turn": "validate_turn", "fork": "merge_turns: fork", "rows": "TrainingRow", "to-training": "to_training",
+  "train-step": "train_step: setup", "positions": "trained_positions", "loss-a0": "grpo_loss_sum: row #0",
+  "loss-a1": "grpo_loss_sum: row #1", "optimizer": "optimizer.step", "log-record": "sink(record)",
+  "next-inference": "next iteration", "sync-check": "sync_check", "finish": "final_sync" };
+const label = s => NAV[s.id] || s.title.split("(")[0].replace(/^.*: /, "");
+
+// shape strip: first step that produces each shape
+const SHAPES = [];
+STEPS.forEach((s, i) => { if (!SHAPES.find(x => x.shape === s.shape) && ["TaskRecord","Partitions","Harbor task dir","RunConfig","PromptRow","AdapterRef v0","TrainingTrace","TurnTokens","RolloutResult","RolloutGroup","advantages","TokenSequence","TrainingRow","PolicyTrainer","LossTerms","StepMetrics","AdapterRef v1","SyncCheck"].includes(s.shape)) SHAPES.push({ shape: s.shape, i }); });
+
+let current = 0;
+const navEl = document.getElementById("nav"), cardEl = document.getElementById("card"), selEl = document.getElementById("step-select");
+
+function buildNav() {
+  let html = "", phase = null, sel = "";
+  STEPS.forEach((s, i) => {
+    if (s.phase !== phase) { if (phase !== null) html += "</ol>"; html += `<div class="phase">${esc(s.phase)}</div><ol>`; phase = s.phase; }
+    const fn = label(s);
+    html += `<li><button data-i="${i}"><span class="n">${i + 1}</span><span class="f">${esc(fn)}</span></button></li>`;
+    sel += `<option value="${i}">${i + 1}. ${esc(fn)}</option>`;
+  });
+  navEl.innerHTML = html + "</ol>";
+  selEl.innerHTML = sel;
+  navEl.querySelectorAll("button").forEach(b => b.addEventListener("click", () => go(+b.dataset.i)));
+  selEl.addEventListener("change", () => go(+selEl.value));
+  document.getElementById("shapes").innerHTML = SHAPES.map((x, k) =>
+    `${k ? '<span class="arr">→</span>' : ""}<button data-i="${x.i}">${esc(x.shape)}</button>`).join("");
+  document.querySelectorAll("#shapes button").forEach(b => b.addEventListener("click", () => go(+b.dataset.i)));
+  document.getElementById("vocab").innerHTML = Object.entries(V).map(([id, t]) => `<span><b>${id}</b> ${esc(t)}</span>`).join("");
+}
+
+function render() {
+  const s = STEPS[current], prev = STEPS[current - 1], next = STEPS[current + 1];
+  cardEl.innerHTML = `
+    <div class="eyebrow"><span class="ph">${esc(s.phase)}</span><span>Step ${current + 1} of ${STEPS.length}</span></div>
+    <h2 class="title">${esc(s.title)}</h2>
+    <div class="meta"><span class="chip">where <b>${esc(s.loc)}</b></span><span class="chip">called by <b>${esc(s.from)}</b></span></div>
+    <div class="plain"><h3>What happens</h3>${s.plain}</div>
+    <div class="io"><div><h3>Input</h3>${s.input}</div><div><h3>Output</h3>${s.output}</div></div>
+    ${s.visual ? `<div class="visual"><h3>Picture</h3>${s.visual}</div>` : ""}
+    ${s.note ? `<p class="note">${s.note}</p>` : ""}
+    <div class="stepnav">
+      <button id="prev" ${prev ? "" : "disabled"}>← ${prev ? esc(label(prev)) : "Start"}</button>
+      <span class="kbd">← → keys</span>
+      <button id="next" ${next ? "" : "disabled"}>${next ? esc(label(next)) : "End"} →</button>
+    </div>`;
+  document.getElementById("prev").addEventListener("click", () => go(current - 1));
+  document.getElementById("next").addEventListener("click", () => go(current + 1));
+  navEl.querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.i === current));
+  document.querySelectorAll("#shapes button").forEach(b => b.classList.toggle("on", +b.dataset.i === current));
+  selEl.value = String(current);
+  const on = navEl.querySelector("button.on");
+  if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+}
+
+function go(i, fromHash) {
+  if (i < 0 || i >= STEPS.length) return;
+  current = i;
+  render();
+  if (!fromHash) { try { history.replaceState(null, "", "#" + STEPS[i].id); } catch (e) { location.hash = STEPS[i].id; } }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("select, input, textarea")) return;
+  if (e.key === "ArrowRight") { go(current + 1); e.preventDefault(); }
+  if (e.key === "ArrowLeft") { go(current - 1); e.preventDefault(); }
+});
+function fromHash() {
+  const i = STEPS.findIndex(s => s.id === location.hash.slice(1));
+  go(i >= 0 ? i : 0, true);
+}
+window.addEventListener("hashchange", fromHash);
+buildNav();
+fromHash();
+</script>
