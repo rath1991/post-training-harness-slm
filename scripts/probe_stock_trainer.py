@@ -27,6 +27,12 @@ from transformers import AutoTokenizer
 from trl import AsyncGRPOConfig
 from trl.experimental.async_grpo.openenv_harness import HarnessAsyncGRPOTrainer
 
+from harness_rl.config import ModelConfig
+
+# LoRA shape comes from the one place it is set; --max-lora-rank above must be
+# at least ModelConfig.lora_rank.
+LORA = ModelConfig()
+
 
 def parse_args() -> argparse.Namespace:
     """Read the probe's few knobs."""
@@ -83,7 +89,9 @@ def main() -> None:
         args=config,
         train_dataset=task_dataset(factory),
         processing_class=AutoTokenizer.from_pretrained(args.model),
-        peft_config=LoraConfig(r=16, lora_alpha=32, target_modules="all-linear"),
+        peft_config=LoraConfig(
+            r=LORA.lora_rank, lora_alpha=LORA.lora_alpha, target_modules="all-linear"
+        ),
     )
     trainer.train()
     print("stock trainer completed 2 steps on a single GPU")

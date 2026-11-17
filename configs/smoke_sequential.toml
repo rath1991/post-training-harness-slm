@@ -1,34 +1,16 @@
 # Day 1, Strategy B: full sequential switching, one engine on the GPU at a time.
-# Identical to smoke_sleep.toml except [run].strategy/name/output_dir and
-# vLLM's memory share (nothing else is resident during rollouts here).
+# Every shared setting (model, LoRA, harness, limits, GRPO) is a default in
+# src/harness_rl/config.py; this file sets only what is specific to this run.
+# vLLM gets a larger memory share because nothing else is resident during
+# rollouts here.
 
 [run]
 name = "smoke-sequential"
 output_dir = "runs/smoke-sequential"
 strategy = "sequential"
-seed = 0
-
-[model]
-base_model = "Qwen/Qwen3-4B-Instruct-2507"
-max_model_len = 12288
-lora_rank = 16
-lora_alpha = 32
 
 [vllm]
 gpu_memory_utilization = 0.85
-max_num_seqs = 4
 
 [harbor]
 split = "data/harbor/smoke"
-harness = "pi"
-sandbox = "docker"
-agent_timeout_sec = 600
-agent_step_limit = 30
-max_concurrent_rollouts = 4
-
-[grpo]
-num_generations = 4
-groups_per_step = 2
-max_steps = 3
-learning_rate = 1e-5
-temperature = 1.0

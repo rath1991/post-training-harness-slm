@@ -1,25 +1,15 @@
-# Held-out evaluation: base and trained models use this same file, so tasks,
-# harness, step limit and timeouts are identical. Use split
-# "data/harbor/ood" for the out-of-distribution set.
+# Held-out evaluation: base and trained models use this same file, and the
+# model, LoRA rank, harness, step limit and timeouts all come from the same
+# defaults in src/harness_rl/config.py as training, so they always match.
+# Use split "data/harbor/ood" for the out-of-distribution set.
 
 [run]
 name = "eval"
 output_dir = "runs/eval"
 strategy = "sequential"
 
-[model]
-base_model = "Qwen/Qwen3-4B-Instruct-2507"
-max_model_len = 12288
-lora_rank = 16
-
 [vllm]
 gpu_memory_utilization = 0.85
-max_num_seqs = 4
 
 [harbor]
 split = "data/harbor/eval"
-harness = "pi"
-sandbox = "docker"
-agent_timeout_sec = 600
-agent_step_limit = 30
-max_concurrent_rollouts = 4

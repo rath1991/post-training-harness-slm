@@ -166,7 +166,7 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
       </tbody>
     </table></div>
     <p class="note">* Strategy A's rollouts are slower because its ≈ 1.5 GB of KV cache holds only ≈ 10 k tokens, so long attempts cannot all generate at once (step 6). The full run is shown with B because the estimates favour it; Day 1 measures the real numbers. The full run's 30–58 h is the figure to plan Day 2 around: cutting steps, tasks per step or Pi's 30-call limit shortens it.</p>
-    <p class="note">Fixed assumptions: Qwen3-4B (36 layers, hidden 2,560, 8 KV heads × 128, vocab 151,936); RTX 5060 Ti 16.3 GB, 448 GB/s, PCIe 5.0 x8, with 0.9 GB already used by the Windows desktop; Ryzen 7 7700X, 16 threads; WSL2 default memory cap 32 GB (half of 64 GB). Every time and memory figure here is an estimate to be replaced by Day 1's <code>metrics.jsonl</code>.</p>
+    <p class="note">Fixed assumptions: Qwen3-4B (36 layers, hidden 2,560, 8 KV heads × 128, vocab 151,936) with LoRA rank 16, alpha 32, on all seven projections (the default in <code>config.py</code>); RTX 5060 Ti 16.3 GB, 448 GB/s, PCIe 5.0 x8, with 0.9 GB already used by the Windows desktop; Ryzen 7 7700X, 16 threads; WSL2 default memory cap 32 GB (half of 64 GB). Every time and memory figure here is an estimate to be replaced by Day 1's <code>metrics.jsonl</code>.</p>
   </section>
 
   <h2 style="margin:0">Code map</h2>

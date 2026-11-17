@@ -1,4 +1,10 @@
-"""Run configuration: frozen dataclasses parsed once from a TOML file."""
+"""Run configuration: frozen dataclasses parsed once from a TOML file.
+
+The defaults below are the single place where every shared parameter is set.
+A file in ``configs/`` sets only what is specific to that run (name, strategy,
+split, vLLM memory share, run length), so training, evaluation and both
+memory strategies always use the same model, LoRA shape and harness limits.
+"""
 
 import tomllib
 from collections.abc import Mapping
@@ -25,8 +31,7 @@ class ModelConfig:
     base_model: str = "Qwen/Qwen3-4B-Instruct-2507"
     served_name: str = "student-base"
     max_model_len: int = 12288
-    lora_rank: int = 32
-    lora_alpha: int = 64
+    lora_rank: int = 16
     lora_targets: tuple[str, ...] = (
         "q_proj",
         "k_proj",
@@ -36,6 +41,11 @@ class ModelConfig:
         "up_proj",
         "down_proj",
     )
+
+    @property
+    def lora_alpha(self) -> int:
+        """Return the LoRA scaling numerator, always twice the rank."""
+        return 2 * self.lora_rank
 
 
 @dataclass(frozen=True, slots=True)
