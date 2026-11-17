@@ -25,8 +25,8 @@ class ModelConfig:
     base_model: str = "Qwen/Qwen3-4B-Instruct-2507"
     served_name: str = "student-base"
     max_model_len: int = 12288
-    lora_rank: int = 16
-    lora_alpha: int = 32
+    lora_rank: int = 32
+    lora_alpha: int = 64
     lora_targets: tuple[str, ...] = (
         "q_proj",
         "k_proj",
