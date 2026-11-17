@@ -61,6 +61,13 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 .path button { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
   padding: 10px 12px; color: var(--fg); font: inherit; cursor: pointer; display: grid; gap: 2px; }
 .path button:hover, .path button:focus-visible { border-color: var(--accent); outline: none; }
+.path .static { width: 100%; background: var(--surface); border: 1px dashed var(--line); border-radius: 6px;
+  padding: 10px 12px; color: var(--fg); display: grid; gap: 2px; box-sizing: border-box; height: 100%; }
+.path button { height: 100%; }
+.path .t { font-size: 0.78rem; color: var(--muted); }
+.path-group { margin: 0 0 18px; }
+.path-group h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 4px; }
+.path-group > p { margin: 0 0 10px; color: var(--muted); font-size: 0.88rem; }
 .path .n { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .path .f { font-family: var(--mono); font-size: 0.85rem; }
 .path .q { font-size: 0.85rem; color: var(--muted); }
@@ -177,7 +184,8 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 
   <section>
     <h2>Reading path</h2>
-    <ol class="path" id="path"></ol>
+    <p class="note">Every file in the repo, in dependency order: each file comes after the ones it imports. GRPO and distillation are separate tracks; both build on Part&nbsp;0. Click a step to show it in the graph above; dashed steps have no box in the graph. Tests to read alongside are listed under each step.</p>
+    <div id="path"></div>
   </section>
 
   <section>
@@ -340,7 +348,7 @@ function select(id) {
     <p class="note" style="margin-top:6px">Highlighted tokens have loss_mask&nbsp;=&nbsp;1 (sampled by the model). The rest are context.</p>` : "";
   document.getElementById("detail").innerHTML = `
     <div class="file">${n.file}</div>
-    <span class="tag" style="color:${COLORS[n.kind]}">${KIND_LABEL[n.kind]}</span>${n.order ? `<span class="tag" style="color:var(--muted)">read #${n.order}</span>` : ""}
+    <span class="tag" style="color:${COLORS[n.kind]}">${KIND_LABEL[n.kind]}</span>${READ_AT[id] ? `<span class="tag" style="color:var(--muted)">read #${READ_AT[id]}</span>` : ""}
     <p>${n.role}</p>
     <ul>${n.fns.map(f => `<li><code>${f}</code></li>`).join("")}</ul>
     ${tokens}
@@ -349,14 +357,46 @@ function select(id) {
     <div class="why">${n.why}</div>`;
 }
 
+// [file(s), question it answers, graph node id or null, tests to read alongside]
 const PATH = [
-  ["traces", "Which tokens get trained?"], ["rewards", "How does a verifier score become an advantage?"],
-  ["batching", "Which groups make it into a batch?"], ["loss", "What exactly is optimised?"],
-  ["step", "How is one update done, and how is it proven?"], ["strategies", "How do vLLM and the trainer share 16 GB?"],
-  ["pipeline", "How does it all loop?"], ["cli", "How do I run it?"],
+  { title: "Part 0 · Shared foundation", note: "Used by both GRPO and distillation.", steps: [
+    ["config.py", "What can be configured?", null, "test_vllm_and_context.py (config parsing)"],
+    ["adapters.py", "How are adapter versions named and stored?", null, ""],
+    ["tasks/manifest → splits → harbor_layout", "Which tasks are used, and how are they converted for Harbor?", "tasks", "test_splits.py, test_harbor_layout.py"],
+    ["rollout/traces.py", "Which tokens get trained?", "traces", "test_traces.py"],
+    ["training/logprobs.py", "How are log-probs computed without running out of memory?", "logprobs", ""],
+    ["training/qlora.py", "How is the NF4 QLoRA model loaded, saved and freed?", "qlora", ""],
+  ] },
+  { title: "Part 1 · GRPO (Experiment A)", note: "Rollouts → training → GPU hand-over → the loop that ties them together.", steps: [
+    ["rollout/rewards.py", "How does a verifier score become an advantage?", "rewards", ""],
+    ["rollout/collect.py", "How are Pi rollouts run and their traces fetched?", "collect", ""],
+    ["rollout/batching.py", "Which groups make it into a batch?", "batching", "test_rewards_and_batching.py"],
+    ["training/grpo_loss.py", "What exactly is optimised?", "loss", "test_losses.py (GRPO part)"],
+    ["training/step.py", "How is one update done, and how is it proven?", "step", ""],
+    ["inference/vllm_server.py", "How is vLLM started, stopped and given adapters?", "vllm", "test_vllm_and_context.py (vLLM part)"],
+    ["memory/monitor.py", "How are GPU and RAM measured per phase?", "monitor", ""],
+    ["memory/strategies.py", "How do vLLM and the trainer share 16 GB?", "strategies", ""],
+    ["pipeline.py", "How does it all loop?", "pipeline", ""],
+    ["evaluation.py", "How are base and trained models compared?", "evaluation", ""],
+    ["reports.py", "Is a trace usable, and which strategy won?", "reports", "test_reports.py"],
+    ["cli.py", "How do I run it?", "cli", ""],
+    ["configs/*.toml, scripts/setup_wsl → serve_harbor → run_day1 (probe_stock_trainer optional)", "What actually gets run, in what order?", null, ""],
+  ] },
+  { title: "Part 2 · Distillation (Experiment B)", note: "Needs only Part 0 (traces, logprobs, qlora). Not wired into the CLI or a loop yet.", steps: [
+    ["distill/teacher_context.py", "Where does the privileged hint go in the teacher's context?", "distill", "test_vllm_and_context.py (distill part)"],
+    ["distill/losses.py", "What do JSD/KL and the sampled-token loss compute?", "distill", "test_losses.py (distill part)"],
+    ["distill/step.py", "How is one distillation update done?", "distill", ""],
+  ] },
 ];
-document.getElementById("path").innerHTML = PATH.map(([id, q], i) =>
-  `<li><button data-id="${id}"><span class="n">${i + 1}</span><span class="f">${byId[id].file.split("  ")[0]}</span><span class="q">${q}</span></button></li>`).join("");
+const READ_AT = {};
+let stepNo = 0;
+document.getElementById("path").innerHTML = PATH.map(group => `
+  <div class="path-group"><h3>${group.title}</h3><p>${group.note}</p><ol class="path">${group.steps.map(([file, q, id, tests]) => {
+    stepNo += 1;
+    if (id && !READ_AT[id]) READ_AT[id] = stepNo;
+    const body = `<span class="n">${stepNo}</span><span class="f">${file}</span><span class="q">${q}</span>${tests ? `<span class="t">Tests: ${tests}</span>` : ""}`;
+    return `<li>${id ? `<button data-id="${id}">${body}</button>` : `<div class="static">${body}</div>`}</li>`;
+  }).join("")}</ol></div>`).join("");
 document.querySelectorAll(".path button").forEach(b => b.addEventListener("click", () => {
   select(b.dataset.id);
   document.querySelector(".graph").scrollIntoView({ behavior: "smooth", block: "nearest" });
